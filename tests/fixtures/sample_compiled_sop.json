@@ -1,0 +1,78 @@
+{
+  "sop_id": "sample-sop",
+  "schema_version": "1.0",
+  "title": "Sample SOP",
+  "source": {
+    "sop_id": "sample-sop",
+    "source_format": "NATURAL_LANGUAGE",
+    "source_path": "/tmp/sample.txt",
+    "preserved_path": "/tmp/sources/sample-sop/sample-sop.txt",
+    "source_sha256": "aabbcc",
+    "created_at": "2026-06-28T10:00:00+00:00"
+  },
+  "applications": ["crm_app"],
+  "goals": {
+    "create_contact": {
+      "goal_id": "create_contact",
+      "name": "Create Contact",
+      "description": "Create a new contact record",
+      "entry_capability_id": "login_cap",
+      "capability_ids": ["login_cap"],
+      "aliases": [],
+      "required_inputs": ["email_address"],
+      "expected_outputs": [],
+      "assumptions": []
+    }
+  },
+  "capabilities": [
+    {
+      "capability_id": "login_cap",
+      "name": "Login",
+      "application_id": "crm_app",
+      "description": "Authenticate user",
+      "steps": [
+        {
+          "step_id": "step_001",
+          "sequence": 1,
+          "action": "OPEN",
+          "element_name": "home_page",
+          "element_type": "PAGE",
+          "application_id": "crm_app",
+          "capability_id": "login_cap",
+          "value": "https://example.com",
+          "wait_condition": null,
+          "expected_outcomes": [
+            {
+              "outcome_id": "out_001",
+              "description": "Page loaded",
+              "is_terminal": true,
+              "is_success": true,
+              "condition": null,
+              "next_capability_id": null
+            }
+          ],
+          "dependencies": [],
+          "notes": null,
+          "source_line": null,
+          "retry_policy": {"max_attempts": 2, "retryable_error_codes": [], "delay_seconds": 1.0}
+        }
+      ],
+      "inputs": [],
+      "outputs": [],
+      "is_deferred": false,
+      "is_tool_candidate": false
+    }
+  ],
+  "inputs": {
+    "email_address": {
+      "name": "email_address",
+      "description": "User email",
+      "required": true,
+      "default_value": null
+    }
+  },
+  "assumptions": [],
+  "unresolved_items": [],
+  "compiled_at": "2026-06-28T10:00:00+00:00",
+  "compiled_content_sha256": "deadbeef"
+}

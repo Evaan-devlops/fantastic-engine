@@ -1,0 +1,5 @@
+[
+  {"sequence": "1", "step_id": "step_001", "application_id": "crm_app", "capability_id": "login_cap", "action": "OPEN", "element_name": "home_page", "element_type": "PAGE", "value": "https://example.com", "wait_condition": "", "expected_outcomes": "page_loaded", "dependencies": "", "notes": "Open CRM"},
+  {"sequence": "2", "step_id": "step_002", "application_id": "crm_app", "capability_id": "login_cap", "action": "FILL", "element_name": "email_field", "element_type": "TEXTBOX", "value": "{{input.email_address}}", "wait_condition": "", "expected_outcomes": "", "dependencies": "step_001", "notes": "Enter email"},
+  {"sequence": "3", "step_id": "step_003", "application_id": "crm_app", "capability_id": "login_cap", "action": "CLICK", "element_name": "login_button", "element_type": "BUTTON", "value": "", "wait_condition": "", "expected_outcomes": "login_success", "dependencies": "step_002", "notes": "Submit"}
+]

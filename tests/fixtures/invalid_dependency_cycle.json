@@ -1,0 +1,86 @@
+{
+  "schema_version": "1.0",
+  "result_id": "result-cycle-001",
+  "request_id": "request-cycle-001",
+  "source_reference": {
+    "source_path": "/tmp/sop_cycle.txt",
+    "source_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "request_id": "request-cycle-001"
+  },
+  "applications": [
+    {
+      "application_id": "crm_app",
+      "name": "CRM Application",
+      "url_patterns": [],
+      "inference": []
+    }
+  ],
+  "goals": [
+    {
+      "goal_id": "cycle_goal",
+      "name": "Cycle Goal",
+      "description": "A goal with a dependency cycle.",
+      "entry_capability_id": "cycle_cap",
+      "capability_ids": ["cycle_cap"],
+      "required_inputs": [],
+      "expected_outputs": [],
+      "assumptions": [],
+      "inference": []
+    }
+  ],
+  "capabilities": [
+    {
+      "capability_id": "cycle_cap",
+      "name": "Cycle Capability",
+      "application_id": "crm_app",
+      "description": "A capability with a circular dependency between steps.",
+      "is_deferred": false,
+      "steps": [
+        {
+          "step_id": "step_A",
+          "sequence": 1,
+          "action": "CLICK",
+          "element_name": "button_a",
+          "element_type": "BUTTON",
+          "value": null,
+          "wait_condition": null,
+          "expected_outcomes": [
+            {
+              "outcome_id": "outcome_a",
+              "description": "Step A done",
+              "is_terminal": true,
+              "is_success": true,
+              "next_capability_id": null
+            }
+          ],
+          "dependencies": ["step_B"],
+          "notes": null,
+          "source_line": null,
+          "inference": []
+        },
+        {
+          "step_id": "step_B",
+          "sequence": 2,
+          "action": "CLICK",
+          "element_name": "button_b",
+          "element_type": "BUTTON",
+          "value": null,
+          "wait_condition": null,
+          "expected_outcomes": [],
+          "dependencies": ["step_A"],
+          "notes": null,
+          "source_line": null,
+          "inference": []
+        }
+      ],
+      "inputs": [],
+      "outputs": [],
+      "inference": []
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "assumptions": [],
+  "unresolved_items": [],
+  "created_at": "2026-06-28T00:00:00+00:00"
+}

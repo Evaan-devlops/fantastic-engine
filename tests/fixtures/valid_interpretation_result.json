@@ -1,0 +1,142 @@
+{
+  "schema_version": "1.0",
+  "result_id": "result-001",
+  "request_id": "request-001",
+  "source_reference": {
+    "source_path": "/tmp/sop.txt",
+    "source_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "request_id": "request-001"
+  },
+  "applications": [
+    {
+      "application_id": "crm_app",
+      "name": "CRM Application",
+      "url_patterns": ["https://example.com"],
+      "inference": []
+    }
+  ],
+  "goals": [
+    {
+      "goal_id": "create_contact",
+      "name": "Create Contact Record",
+      "description": "Creates a new contact record in the CRM system.",
+      "entry_capability_id": "login_cap",
+      "capability_ids": ["login_cap", "create_cap"],
+      "required_inputs": ["email_address", "website_url"],
+      "expected_outputs": ["contact_id"],
+      "assumptions": ["User has CRM account"],
+      "inference": []
+    }
+  ],
+  "capabilities": [
+    {
+      "capability_id": "login_cap",
+      "name": "Login",
+      "application_id": "crm_app",
+      "description": "Authenticates the user into the CRM.",
+      "is_deferred": false,
+      "is_tool_candidate": false,
+      "steps": [
+        {
+          "step_id": "step_001",
+          "sequence": 1,
+          "action": "OPEN",
+          "element_name": "home_page",
+          "element_type": "PAGE",
+          "value": "https://example.com",
+          "wait_condition": null,
+          "expected_outcomes": [],
+          "dependencies": [],
+          "notes": null,
+          "source_line": null,
+          "inference": []
+        },
+        {
+          "step_id": "step_002",
+          "sequence": 2,
+          "action": "CLICK",
+          "element_name": "login_button",
+          "element_type": "BUTTON",
+          "value": null,
+          "wait_condition": null,
+          "expected_outcomes": [
+            {
+              "outcome_id": "login_success",
+              "description": "Login succeeded, continue to create contact",
+              "is_terminal": false,
+              "is_success": true,
+              "condition": null,
+              "next_capability_id": "create_cap"
+            }
+          ],
+          "dependencies": ["step_001"],
+          "notes": null,
+          "source_line": null,
+          "inference": []
+        }
+      ],
+      "inputs": ["website_url"],
+      "outputs": [],
+      "inference": []
+    },
+    {
+      "capability_id": "create_cap",
+      "name": "Create Contact",
+      "application_id": "crm_app",
+      "description": "Creates the new contact record.",
+      "is_deferred": false,
+      "is_tool_candidate": false,
+      "steps": [
+        {
+          "step_id": "step_003",
+          "sequence": 1,
+          "action": "FILL",
+          "element_name": "email_field",
+          "element_type": "TEXTBOX",
+          "value": "{{input.email_address}}",
+          "wait_condition": null,
+          "expected_outcomes": [
+            {
+              "outcome_id": "contact_created",
+              "description": "Contact record created",
+              "is_terminal": true,
+              "is_success": true,
+              "condition": null,
+              "next_capability_id": null
+            }
+          ],
+          "dependencies": [],
+          "notes": null,
+          "source_line": null,
+          "inference": []
+        }
+      ],
+      "inputs": ["email_address"],
+      "outputs": ["contact_id"],
+      "inference": []
+    }
+  ],
+  "inputs": [
+    {
+      "name": "email_address",
+      "description": "Email address of the new contact",
+      "required": true,
+      "default_value": null
+    },
+    {
+      "name": "website_url",
+      "description": "Base URL of the CRM application",
+      "required": true,
+      "default_value": null
+    }
+  ],
+  "outputs": [
+    {
+      "name": "contact_id",
+      "description": "The ID of the newly created contact"
+    }
+  ],
+  "assumptions": ["User has CRM account"],
+  "unresolved_items": [],
+  "created_at": "2026-06-28T00:00:00+00:00"
+}

@@ -1,0 +1,98 @@
+{
+  "schema_version": "1.0",
+  "result_id": "result-deferred-001",
+  "request_id": "request-deferred-001",
+  "source_reference": {
+    "source_path": "/tmp/sop_deferred.txt",
+    "source_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "request_id": "request-deferred-001"
+  },
+  "applications": [
+    {
+      "application_id": "crm_app",
+      "name": "CRM Application",
+      "url_patterns": [],
+      "inference": []
+    }
+  ],
+  "goals": [
+    {
+      "goal_id": "deferred_goal",
+      "name": "Deferred Branch Goal",
+      "description": "A goal that branches to a deferred capability.",
+      "entry_capability_id": "active_cap",
+      "capability_ids": ["active_cap", "deferred_cap"],
+      "required_inputs": [],
+      "expected_outputs": [],
+      "assumptions": [],
+      "inference": []
+    }
+  ],
+  "capabilities": [
+    {
+      "capability_id": "active_cap",
+      "name": "Active Capability",
+      "application_id": "crm_app",
+      "description": "An active capability that branches to a deferred one.",
+      "is_deferred": false,
+      "is_tool_candidate": false,
+      "steps": [
+        {
+          "step_id": "step_001",
+          "sequence": 1,
+          "action": "CLICK",
+          "element_name": "start_button",
+          "element_type": "BUTTON",
+          "value": null,
+          "wait_condition": null,
+          "expected_outcomes": [
+            {
+              "outcome_id": "outcome_success",
+              "description": "Success — branch to deferred",
+              "is_terminal": false,
+              "is_success": true,
+              "condition": {
+                "source_key": "login_status",
+                "operator": "EQUALS",
+                "expected_value": "failed"
+              },
+              "next_capability_id": "deferred_cap"
+            },
+            {
+              "outcome_id": "outcome_done",
+              "description": "Done",
+              "is_terminal": true,
+              "is_success": true,
+              "condition": null,
+              "next_capability_id": null
+            }
+          ],
+          "dependencies": [],
+          "notes": null,
+          "source_line": null,
+          "inference": []
+        }
+      ],
+      "inputs": [],
+      "outputs": [],
+      "inference": []
+    },
+    {
+      "capability_id": "deferred_cap",
+      "name": "Deferred Capability",
+      "application_id": "crm_app",
+      "description": "A capability not yet implemented — will be created later.",
+      "is_deferred": true,
+      "is_tool_candidate": false,
+      "steps": [],
+      "inputs": [],
+      "outputs": [],
+      "inference": []
+    }
+  ],
+  "inputs": [],
+  "outputs": [],
+  "assumptions": [],
+  "unresolved_items": [],
+  "created_at": "2026-06-28T00:00:00+00:00"
+}

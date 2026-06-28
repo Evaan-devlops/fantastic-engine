@@ -1,0 +1,4 @@
+sequence,step_id,application_id,capability_id,action,element_name,element_type,value,wait_condition,expected_outcomes,dependencies,notes
+1,step_001,crm_app,login_cap,OPEN,home_page,PAGE,https://example.com,,page_loaded,,Open CRM
+2,step_002,crm_app,login_cap,FILL,email_field,TEXTBOX,{{input.email_address}},,,step_001,Enter email
+3,step_003,crm_app,login_cap,CLICK,login_button,BUTTON,,,login_success,,step_002,Submit form

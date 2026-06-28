@@ -1,0 +1,14 @@
+{
+  "run_id": "run-sample-001",
+  "task_id": "task-sample-001",
+  "status": "CREATED",
+  "current_capability_id": null,
+  "current_step_id": null,
+  "step_progress": {},
+  "branch_decisions": {},
+  "inputs": {},
+  "produced_outputs": {},
+  "clarification_request_id": null,
+  "created_at": "2026-01-01T00:00:00+00:00",
+  "updated_at": "2026-01-01T00:00:00+00:00"
+}

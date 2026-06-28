@@ -1,0 +1,41 @@
+# Create Contact Record
+
+This SOP describes the steps to create a new contact record in the CRM system.
+
+## Prerequisites
+
+- User must have a valid CRM account
+- The website URL must be reachable: https://example.com
+- authentication: tool
+
+## Inputs Required
+
+- {{input.website_url}} — the base URL of the CRM application
+- {{input.email_address}} — email address of the new contact
+
+## Steps
+
+1. Open the CRM at {{input.website_url}}
+2. Let the user complete login and MFA
+3. Navigate to the Contacts section
+4. Click the New Contact button
+5. Fill in the email field with {{input.email_address}}
+6. Click the Save button
+
+## Conditional Logic
+
+if login fails, retry up to 3 times before escalating
+wait for the page to load before proceeding to the next step
+
+## Deferred Capability
+
+get_code will be created later once the authentication module is finalised
+
+## Branch Paths
+
+→ success_path
+→ failure_path
+
+## Notes
+
+All steps must be executed in sequence. The user should not close the browser window during execution.
