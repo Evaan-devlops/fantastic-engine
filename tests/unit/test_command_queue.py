@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from sop_automation.models.runtime import (
+    AckStatus,
     CommandAcknowledgement,
     RuntimeCommand,
     RuntimeCommandType,
@@ -15,6 +16,7 @@ from sop_automation.models.runtime import (
 from sop_automation.runtime.command_queue import (
     consume_command,
     poll_commands,
+    poll_for_ack,
     read_acknowledgement,
     submit_command,
     write_acknowledgement,
@@ -40,7 +42,7 @@ def _make_command(
 
 def _make_ack(
     command_id: str = "cmd-001",
-    status: str = "ACCEPTED",
+    status: AckStatus = AckStatus.STARTED,
     run_id: str | None = None,
     message: str | None = None,
 ) -> CommandAcknowledgement:
@@ -173,12 +175,12 @@ class TestConsumeCommand:
 class TestAcknowledgement:
     def test_write_and_read_back(self, tmp_path: Path) -> None:
         acks_dir = tmp_path / "acks"
-        ack = _make_ack("cmd-ack-01", status="ACCEPTED", run_id="run-abc")
+        ack = _make_ack("cmd-ack-01", status=AckStatus.STARTED, run_id="run-abc")
         write_acknowledgement(acks_dir, ack)
         result = read_acknowledgement(acks_dir, "cmd-ack-01")
         assert result is not None
         assert result.command_id == "cmd-ack-01"
-        assert result.status == "ACCEPTED"
+        assert result.status == AckStatus.STARTED
         assert result.run_id == "run-abc"
 
     def test_missing_returns_none(self, tmp_path: Path) -> None:
@@ -206,3 +208,45 @@ class TestAcknowledgement:
         result = read_acknowledgement(acks_dir, "cmd-msg")
         assert result is not None
         assert result.message == "Run started successfully."
+
+
+class TestConsumeCommandWithRouting:
+    def test_consume_moves_to_processed(self, tmp_path: Path) -> None:
+        commands_dir = tmp_path / "commands"
+        processed_dir = tmp_path / "processed"
+        cmd = _make_command("cmd-routed")
+        path = submit_command(commands_dir, cmd)
+        consume_command(path, processed_dir=processed_dir)
+        assert not path.exists()
+        assert (processed_dir / "cmd-routed.json").exists()
+
+    def test_consume_moves_invalid_to_failed(self, tmp_path: Path) -> None:
+        import json
+        commands_dir = tmp_path / "commands"
+        failed_dir = tmp_path / "failed"
+        commands_dir.mkdir(parents=True, exist_ok=True)
+        bad_path = commands_dir / "bad-cmd.json"
+        bad_path.write_text(
+            json.dumps({"command_id": "bad", "command_type": "INVALID_TYPE",
+                        "payload": {}, "created_at": "2026-01-01T00:00:00+00:00"}),
+            encoding="utf-8",
+        )
+        with pytest.raises(Exception):
+            consume_command(bad_path, failed_dir=failed_dir)
+        assert (failed_dir / "bad-cmd.json").exists()
+
+
+class TestPollForAck:
+    def test_returns_none_on_timeout(self, tmp_path: Path) -> None:
+        acks_dir = tmp_path / "acks"
+        acks_dir.mkdir()
+        result = poll_for_ack(acks_dir, "nonexistent-id", timeout_s=0.1, poll_interval_s=0.05)
+        assert result is None
+
+    def test_returns_ack_when_present(self, tmp_path: Path) -> None:
+        acks_dir = tmp_path / "acks"
+        ack = _make_ack("cmd-poll-test", status=AckStatus.COMPLETED)
+        write_acknowledgement(acks_dir, ack)
+        result = poll_for_ack(acks_dir, "cmd-poll-test", timeout_s=1.0)
+        assert result is not None
+        assert result.status == AckStatus.COMPLETED

@@ -16,6 +16,7 @@ def _run(*args: str, cwd: str | None = None) -> subprocess.CompletedProcess:
         capture_output=True,
         text=True,
         cwd=cwd,
+        timeout=20,
     )
 
 
@@ -143,6 +144,7 @@ class TestWorkspaceInit:
             "inbox", "sources", "compiled", "manifests", "runs",
             "resolutions", "routes", "tool_build_requests", "tools", "generated",
             "runtime", str(Path("runtime") / "commands"), str(Path("runtime") / "acknowledgements"),
+            str(Path("runtime") / "processed"), str(Path("runtime") / "failed"),
         ]
         for subdir in expected:
             assert (tmp_path / subdir).is_dir(), f"Directory not created: {subdir}"
@@ -195,12 +197,12 @@ class TestWorkspaceInitOutputFormat:
                 f"Line does not match expected format: '{line}'"
             )
 
-    def test_output_contains_thirteen_status_lines(self, tmp_path: Path) -> None:
+    def test_output_contains_fifteen_status_lines(self, tmp_path: Path) -> None:
         result = _run("workspace", "init", "--workspace", str(tmp_path))
         status_lines = [
             line for line in result.stdout.splitlines()
             if self._LINE_PATTERN.match(line)
         ]
-        assert len(status_lines) == 13, (
-            f"Expected 13 status lines, got {len(status_lines)}:\n{result.stdout}"
+        assert len(status_lines) == 15, (
+            f"Expected 15 status lines, got {len(status_lines)}:\n{result.stdout}"
         )

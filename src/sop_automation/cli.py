@@ -239,7 +239,7 @@ def cmd_task_submit(args: argparse.Namespace) -> int:
     from sop_automation.models.task import TaskIntent
     from sop_automation.services.sop_selector import SopSelectorService
     from sop_automation.services.task_plan import TaskPlanService
-    from sop_automation.runtime.command_queue import submit_command
+    from sop_automation.runtime.command_queue import submit_command, poll_for_ack
     from sop_automation.storage.json_store import new_id, read_json, utc_now
     from sop_automation.storage.paths import WorkspacePaths
     config = get_config()
@@ -260,9 +260,16 @@ def cmd_task_submit(args: argparse.Namespace) -> int:
             created_at=utc_now(),
         )
         submit_command(paths.runtime_commands, command)
-        print(f"Command submitted: {command.command_id}")
+        ack = poll_for_ack(paths.runtime_acks, command.command_id, timeout_s=10.0)
+        if ack is None:
+            print(f"Command queued: {command.command_id}")
+            print("Host not responding — command queued")
+            return 0
+        if ack.status.value in ("REJECTED", "FAILED"):
+            print(f"Error: {ack.message}", file=sys.stderr)
+            return 1
+        print(f"Run started: {ack.run_id}")
         print(f"SOP: {selection.sop_id} / Goal: {selection.goal_id}")
-        print(f"Plan: {plan_result.plan_path}")
         return 0
     except SopAutomationError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -275,19 +282,76 @@ def cmd_task_status(args: argparse.Namespace) -> int:
     from sop_automation.storage.json_store import read_json
     from sop_automation.storage.paths import resolve_path
     config = get_config()
+
+    _STEP_SYMBOLS = {
+        "COMPLETED": "[✓]",
+        "FAILED":    "[!]",
+        "SKIPPED":   "[-]",
+        "WAITING":   "[⏸]",
+        "RUNNING":   "[→]",
+    }
+    _WAITING_RUN_STATUSES = {
+        "WAITING_FOR_AUTH",
+        "WAITING_FOR_CLARIFICATION",
+        "WAITING_FOR_DEFERRED_CAPABILITY",
+    }
+
     try:
         state_path = resolve_path(config.sop_workspace, f"runs/{args.run_id}/run_state.json")
         if not state_path.exists():
             print(f"Run not found: {args.run_id}", file=sys.stderr)
             return 1
         state = RunState.model_validate(read_json(state_path))
-        print(f"Run: {state.run_id}")
-        print(f"Status: {state.status}")
-        print(f"Current capability: {state.current_capability_id or 'N/A'}")
-        print(f"Current step: {state.current_step_id or 'N/A'}")
-        completed = [k for k, v in state.step_progress.items() if v.status.value == "COMPLETED"]
-        failed = [k for k, v in state.step_progress.items() if v.status.value == "FAILED"]
-        print(f"Steps completed: {len(completed)}, failed: {len(failed)}")
+
+        print(f"Run: {state.run_id}  Status: {state.status.value}")
+        print()
+
+        def _symbol(step_id: str) -> str:
+            prog = state.step_progress.get(step_id)
+            if prog is None:
+                return "[ ]"
+            sv = prog.status.value
+            if sv in _STEP_SYMBOLS:
+                return _STEP_SYMBOLS[sv]
+            if step_id == state.current_step_id and state.status.value in _WAITING_RUN_STATUSES:
+                return "[⏸]"
+            if step_id == state.current_step_id:
+                return "[→]"
+            return "[ ]"
+
+        # Try to load task_plan.json for complete step list (including pending steps)
+        plan_path = state_path.parent / "task_plan.json"
+        step_rows: list[tuple[str, str]] = []  # (step_id, capability_id)
+        if plan_path.exists():
+            try:
+                from sop_automation.models.task import TaskPlan
+                plan = TaskPlan.model_validate(read_json(plan_path))
+                for cap in plan.capabilities:
+                    for step in sorted(cap.steps, key=lambda s: s.sequence):
+                        step_rows.append((step.step_id, cap.capability_id))
+            except Exception:
+                pass
+
+        if step_rows:
+            for step_id, cap_id in step_rows:
+                sym = _symbol(step_id)
+                print(f"  {sym} {step_id:<32} ({cap_id})")
+        elif state.step_progress:
+            for step_id, prog in state.step_progress.items():
+                sym = _STEP_SYMBOLS.get(prog.status.value, "[ ]")
+                print(f"  {sym} {step_id}")
+            print("  (pending steps not shown — task_plan.json not found)")
+        else:
+            print("  (no steps recorded yet)")
+
+        print()
+        counts = {
+            "Completed": sum(1 for p in state.step_progress.values() if p.status.value == "COMPLETED"),
+            "Failed":    sum(1 for p in state.step_progress.values() if p.status.value == "FAILED"),
+            "Skipped":   sum(1 for p in state.step_progress.values() if p.status.value == "SKIPPED"),
+            "Waiting":   sum(1 for p in state.step_progress.values() if p.status.value == "WAITING"),
+        }
+        print("  |  ".join(f"{k}: {v}" for k, v in counts.items()))
         return 0
     except SopAutomationError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -299,7 +363,7 @@ def cmd_task_continue(args: argparse.Namespace) -> int:
     from sop_automation.models.common import RunStatus
     from sop_automation.models.execution import RunState
     from sop_automation.models.runtime import RuntimeCommand, RuntimeCommandType
-    from sop_automation.runtime.command_queue import submit_command
+    from sop_automation.runtime.command_queue import submit_command, poll_for_ack
     from sop_automation.storage.json_store import new_id, read_json, utc_now
     from sop_automation.storage.paths import WorkspacePaths, resolve_path
     config = get_config()
@@ -320,7 +384,14 @@ def cmd_task_continue(args: argparse.Namespace) -> int:
             created_at=utc_now(),
         )
         submit_command(paths.runtime_commands, command)
-        print(f"Continue command submitted: {command.command_id}")
+        ack = poll_for_ack(paths.runtime_acks, command.command_id, timeout_s=15.0)
+        if ack is None:
+            print(f"Continue command queued: {command.command_id}")
+            return 0
+        if ack.status.value == "REJECTED":
+            print(f"Rejected: {ack.message}", file=sys.stderr)
+            return 1
+        print(ack.message or ack.status.value)
         return 0
     except SopAutomationError as exc:
         print(f"Error: {exc}", file=sys.stderr)
@@ -460,8 +531,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Prepare a task intent from a request file.",
     )
     task_prepare_intent.add_argument(
-        "request_file",
-        metavar="REQUEST_FILE",
+        "--request-file",
+        metavar="PATH",
+        required=True,
+        dest="request_file",
         help="Path to a text file describing the task goal and inputs.",
     )
     task_prepare_intent.add_argument(
@@ -477,8 +550,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Validate a task intent JSON file.",
     )
     task_validate_intent.add_argument(
-        "intent_file",
-        metavar="INTENT_FILE",
+        "--intent-file",
+        metavar="PATH",
+        required=True,
+        dest="intent_file",
         help="Path to a task_intent.json file.",
     )
 
@@ -487,8 +562,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Submit a task intent to the runtime for execution.",
     )
     task_submit.add_argument(
-        "intent_file",
-        metavar="INTENT_FILE",
+        "--intent-file",
+        metavar="PATH",
+        required=True,
+        dest="intent_file",
         help="Path to a task_intent.json file.",
     )
 
@@ -521,8 +598,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Show the status of a task run.",
     )
     task_status.add_argument(
-        "run_id",
+        "--run-id",
         metavar="RUN_ID",
+        required=True,
+        dest="run_id",
         help="Run ID to query.",
     )
 
@@ -531,8 +610,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Continue a run that is waiting for authentication.",
     )
     task_continue.add_argument(
-        "run_id",
+        "--run-id",
         metavar="RUN_ID",
+        required=True,
+        dest="run_id",
         help="Run ID to continue.",
     )
 
@@ -541,8 +622,10 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Cancel a running task.",
     )
     task_cancel.add_argument(
-        "run_id",
+        "--run-id",
         metavar="RUN_ID",
+        required=True,
+        dest="run_id",
         help="Run ID to cancel.",
     )
 

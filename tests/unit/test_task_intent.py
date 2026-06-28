@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from sop_automation.errors import ValidationError as SopValidationError
-from sop_automation.models.task import TaskIntent
+from sop_automation.models.task import TaskIntent, TaskIntentInterpretationRequest
 from sop_automation.services.task_intent import TaskIntentService
 from sop_automation.storage.json_store import new_id
 
@@ -177,3 +177,60 @@ class TestValidateIntent:
         intent = _make_intent("create_contact")
         result = self.service.validate_intent(intent, tmp_path)
         assert result.report.issues == []
+
+
+# ---------------------------------------------------------------------------
+# TestTaskIntentInterpretationRequest
+# ---------------------------------------------------------------------------
+
+class TestTaskIntentInterpretationRequest:
+    def _make_request(self) -> TaskIntentInterpretationRequest:
+        return TaskIntentInterpretationRequest(
+            request_id="req-123",
+            raw_request="Create a new contact named John",
+            raw_request_sha256="a" * 64,
+            available_sop_goal_summaries=[{"goal_id": "g1", "name": "Create Contact"}],
+            required_output_schema={"type": "object"},
+            created_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+
+    def test_model_validates_correctly(self) -> None:
+        req = self._make_request()
+        assert req.request_id == "req-123"
+
+    def test_schema_version_default(self) -> None:
+        req = self._make_request()
+        assert req.schema_version == "1.0"
+
+    def test_request_id_stored(self) -> None:
+        req = self._make_request()
+        assert req.request_id == "req-123"
+
+    def test_raw_request_stored(self) -> None:
+        req = self._make_request()
+        assert "John" in req.raw_request
+
+    def test_sha256_stored(self) -> None:
+        req = self._make_request()
+        assert req.raw_request_sha256 == "a" * 64
+
+
+class TestTaskIntentNewFields:
+    def test_request_id_defaults_empty(self) -> None:
+        intent = _make_intent("create_contact")
+        assert intent.request_id == ""
+
+    def test_raw_request_sha256_defaults_empty(self) -> None:
+        intent = _make_intent("create_contact")
+        assert intent.raw_request_sha256 == ""
+
+    def test_request_id_can_be_set(self) -> None:
+        intent = TaskIntent(
+            intent_id=new_id(),
+            request_id="req-xyz",
+            raw_request_sha256="b" * 64,
+            requested_goal="create_contact",
+            created_at=datetime.now(UTC),
+        )
+        assert intent.request_id == "req-xyz"
+        assert intent.raw_request_sha256 == "b" * 64

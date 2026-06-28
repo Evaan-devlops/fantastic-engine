@@ -1,10 +1,13 @@
 """Tests for preprocessing layer — written but not run (Phase 1)."""
 from __future__ import annotations
 
+import builtins
 import csv
 import json
+import sys
+import types
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -154,8 +157,44 @@ class TestCsvPreprocessor:
 # XLSX preprocessor tests (using mocks — openpyxl not installed)
 # ---------------------------------------------------------------------------
 
+
+def _install_fake_openpyxl(monkeypatch: pytest.MonkeyPatch, workbook: MagicMock) -> MagicMock:
+    fake_openpyxl = types.ModuleType("openpyxl")
+    load_workbook = MagicMock(return_value=workbook)
+    fake_openpyxl.load_workbook = load_workbook
+    monkeypatch.setitem(sys.modules, "openpyxl", fake_openpyxl)
+    return load_workbook
+
+
 class TestXlsxPreprocessor:
-    def test_xlsx_reject_formula_in_cell(self, tmp_path: Path) -> None:
+    def test_xlsx_missing_dependency_raises_validation_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from sop_automation.preprocessing.xlsx_preprocessor import preprocess_xlsx
+        from sop_automation.errors import ValidationError
+
+        dummy = tmp_path / "test.xlsx"
+        dummy.write_bytes(b"")
+        monkeypatch.delitem(sys.modules, "openpyxl", raising=False)
+        real_import = builtins.__import__
+
+        def blocked_import(name: str, *args: object, **kwargs: object) -> object:
+            if name == "openpyxl":
+                raise ImportError("blocked test import")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", blocked_import)
+
+        with pytest.raises(ValidationError, match="openpyxl is required"):
+            preprocess_xlsx(dummy)
+
+    def test_xlsx_reject_formula_in_cell(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from sop_automation.preprocessing.xlsx_preprocessor import preprocess_xlsx
         from sop_automation.errors import ValidationError
 
@@ -186,11 +225,19 @@ class TestXlsxPreprocessor:
         dummy = tmp_path / "test.xlsx"
         dummy.write_bytes(b"")
 
-        with patch("openpyxl.load_workbook", return_value=mock_wb):
-            with pytest.raises(ValidationError, match="formula"):
-                preprocess_xlsx(dummy)
+        load_workbook = _install_fake_openpyxl(monkeypatch, mock_wb)
 
-    def test_xlsx_prefer_sop_sheet(self, tmp_path: Path) -> None:
+        with pytest.raises(ValidationError, match="formula"):
+            preprocess_xlsx(dummy)
+
+        load_workbook.assert_called_once_with(dummy, read_only=True, data_only=False)
+        mock_wb.close.assert_called_once()
+
+    def test_xlsx_prefer_sop_sheet(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from sop_automation.preprocessing.xlsx_preprocessor import preprocess_xlsx
 
         def _make_sheet(title: str) -> MagicMock:
@@ -216,14 +263,24 @@ class TestXlsxPreprocessor:
         dummy = tmp_path / "test.xlsx"
         dummy.write_bytes(b"")
 
-        with patch("openpyxl.load_workbook", return_value=mock_wb):
-            result = preprocess_xlsx(dummy)
+        load_workbook = _install_fake_openpyxl(monkeypatch, mock_wb)
+        result = preprocess_xlsx(dummy)
 
         # SOP sheet was used — iter_rows called on sop_sheet, not sheet1
+        load_workbook.assert_called_once_with(dummy, read_only=True, data_only=False)
+        sheet1.iter_rows.assert_not_called()
         sop_sheet.iter_rows.assert_called()
         assert result.source_format.value == "XLSX"
+        assert "step_id\taction" in result.normalized_text
+        assert "step_001\tCLICK" in result.normalized_text
+        assert len(result.sections) == 1
+        mock_wb.close.assert_called_once()
 
-    def test_xlsx_fallback_first_visible_sheet(self, tmp_path: Path) -> None:
+    def test_xlsx_fallback_first_visible_sheet(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from sop_automation.preprocessing.xlsx_preprocessor import preprocess_xlsx
 
         h1 = MagicMock(); h1.value = "step_id"; h1.data_type = "s"
@@ -245,12 +302,21 @@ class TestXlsxPreprocessor:
         dummy = tmp_path / "test.xlsx"
         dummy.write_bytes(b"")
 
-        with patch("openpyxl.load_workbook", return_value=mock_wb):
-            result = preprocess_xlsx(dummy)
+        load_workbook = _install_fake_openpyxl(monkeypatch, mock_wb)
+        result = preprocess_xlsx(dummy)
 
+        load_workbook.assert_called_once_with(dummy, read_only=True, data_only=False)
+        mock_ws.iter_rows.assert_called_once_with(values_only=False)
         assert result.source_format.value == "XLSX"
+        assert result.normalized_text == "step_id\taction\nstep_001\tCLICK"
+        assert len(result.sections) == 1
+        mock_wb.close.assert_called_once()
 
-    def test_xlsx_reject_empty_workbook(self, tmp_path: Path) -> None:
+    def test_xlsx_reject_empty_workbook(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
         from sop_automation.preprocessing.xlsx_preprocessor import preprocess_xlsx
         from sop_automation.errors import ValidationError
 
@@ -264,9 +330,14 @@ class TestXlsxPreprocessor:
         dummy = tmp_path / "test.xlsx"
         dummy.write_bytes(b"")
 
-        with patch("openpyxl.load_workbook", return_value=mock_wb):
-            with pytest.raises(ValidationError, match="no visible sheets"):
-                preprocess_xlsx(dummy)
+        load_workbook = _install_fake_openpyxl(monkeypatch, mock_wb)
+
+        with pytest.raises(ValidationError, match="no visible sheets"):
+            preprocess_xlsx(dummy)
+
+        load_workbook.assert_called_once_with(dummy, read_only=True, data_only=False)
+        mock_ws.iter_rows.assert_not_called()
+        mock_wb.close.assert_called_once()
 
 
 # ---------------------------------------------------------------------------

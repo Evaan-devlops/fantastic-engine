@@ -219,6 +219,35 @@ class SopValidateService:
                             location=step_loc,
                         ))
 
+                # R12b MANUAL_AUTH_POSTCONDITION_REQUIRED
+                _ALLOWED_AUTH_WAIT_TYPES = frozenset({
+                    "URL_CONTAINS", "URL_EQUALS", "ELEMENT_VISIBLE",
+                    "ELEMENT_TEXT_CONTAINS", "ELEMENT_TEXT_EQUALS",
+                })
+                if step.action == ActionType.MANUAL_AUTH:
+                    if step.wait_condition is None:
+                        issues.append(ValidationIssue(
+                            severity=ERROR,
+                            rule_id="MANUAL_AUTH_POSTCONDITION_REQUIRED",
+                            message=(
+                                "MANUAL_AUTH step must have a wait_condition. "
+                                "Allowed types: URL_CONTAINS, URL_EQUALS, ELEMENT_VISIBLE, "
+                                "ELEMENT_TEXT_CONTAINS, ELEMENT_TEXT_EQUALS"
+                            ),
+                            location=step_loc,
+                        ))
+                    elif step.wait_condition.type.value not in _ALLOWED_AUTH_WAIT_TYPES:
+                        issues.append(ValidationIssue(
+                            severity=ERROR,
+                            rule_id="MANUAL_AUTH_POSTCONDITION_REQUIRED",
+                            message=(
+                                f"MANUAL_AUTH wait_condition type "
+                                f"{step.wait_condition.type.value!r} is not allowed. "
+                                f"Use: {', '.join(sorted(_ALLOWED_AUTH_WAIT_TYPES))}"
+                            ),
+                            location=step_loc,
+                        ))
+
                 # R13 BRANCH_DESTINATIONS_RESOLVE
                 for outcome in step.expected_outcomes:
                     if outcome.next_capability_id is not None:

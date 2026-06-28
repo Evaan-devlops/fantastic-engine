@@ -31,6 +31,12 @@ _PROGRESS_SYMBOLS = {
     StepStatus.SKIPPED: "-",
 }
 
+_TERMINAL_ACTIONS = frozenset({
+    ActionType.END_SUCCESS,
+    ActionType.END_FAILURE,
+    ActionType.DEFERRED,
+})
+
 
 def _utc_now() -> datetime:
     return datetime.now(UTC)
@@ -103,7 +109,6 @@ class RunManager:
         self._state: RunState | None = None
         self._context: dict[str, Any] = {}
         self._auth_event: asyncio.Event = asyncio.Event()
-        self._auth_result: bool = False
 
     def _emit_event(self, event_type: str, data: dict[str, Any]) -> None:
         event = {"type": event_type, "ts": _utc_now().isoformat(), **data}
@@ -205,7 +210,7 @@ class RunManager:
             selected_outcome: PlannedOutcome | None = None
             for step in sorted_steps:
                 if self._state.status not in (RunStatus.RUNNING,):
-                    return
+                    break
 
                 prog = self._state.step_progress.get(step.step_id)
                 if prog and prog.status == StepStatus.COMPLETED:
@@ -213,14 +218,19 @@ class RunManager:
 
                 selected_outcome = await self._execute_step(step, page, plan)
 
-                if self._state.status in (
-                    RunStatus.WAITING_FOR_AUTH,
-                    RunStatus.FAILED,
-                    RunStatus.COMPLETED,
-                    RunStatus.WAITING_FOR_CLARIFICATION,
-                    RunStatus.WAITING_FOR_DEFERRED_CAPABILITY,
+                # Stop immediately when status left RUNNING (auth/fail/clarification/deferred)
+                if self._state.status not in (RunStatus.RUNNING,):
+                    break
+
+                # Stop immediately when outcome is terminal or routes to next capability
+                if selected_outcome is not None and (
+                    selected_outcome.is_terminal or selected_outcome.next_capability_id
                 ):
-                    return
+                    break
+
+            # If execution was interrupted by a non-running status, let the caller handle it
+            if self._state.status not in (RunStatus.RUNNING,):
+                return
 
             self._emit_event("capability_completed", {"capability_id": planned_cap.capability_id})
 
@@ -253,6 +263,18 @@ class RunManager:
             self._save_state()
             self._emit_event("run_succeeded", {"run_id": self._state.run_id})
 
+    async def _check_auth_condition(self, step: PlannedStep, page: "Page") -> bool:
+        """Evaluate MANUAL_AUTH post-auth condition against the live page. Fails closed."""
+        if step.wait_condition is None:
+            return False  # fail closed — a postcondition is required
+        from sop_automation.runtime.page_preparation import PagePreparationService
+        prep = PagePreparationService()
+        try:
+            await prep.prepare(page, step.wait_condition)
+            return True
+        except Exception:
+            return False
+
     async def _execute_step(
         self,
         step: PlannedStep,
@@ -274,6 +296,7 @@ class RunManager:
         self._save_state()
         self._emit_event("step_started", {"step_id": step.step_id})
 
+        # --- MANUAL_AUTH: suspend until signal_auth() fires; evaluate page condition each time ---
         if step.action == ActionType.MANUAL_AUTH:
             prog.status = StepStatus.WAITING
             state.status = RunStatus.WAITING_FOR_AUTH
@@ -281,25 +304,86 @@ class RunManager:
             self._save_state()
             self._emit_event("auth_waiting", {"step_id": step.step_id})
             print("\nAuthentication required. Complete login in browser.")
-            self._auth_event.clear()
-            await self._auth_event.wait()
 
-            if self._auth_result:
-                prog.status = StepStatus.COMPLETED
-                prog.completed_at = _utc_now()
-                state.status = RunStatus.RUNNING
-                state.updated_at = _utc_now()
-                self._save_state()
-                self._emit_event("auth_verified", {"step_id": step.step_id})
-            else:
-                state.status = RunStatus.WAITING_FOR_AUTH
-                state.updated_at = _utc_now()
-                self._save_state()
-                self._emit_event("auth_still_required", {"step_id": step.step_id})
-                return None
+            while True:
+                self._auth_event.clear()
+                await self._auth_event.wait()
+
+                # Honour cancellation before any state update
+                if state.status == RunStatus.CANCELLED:
+                    return None
+
+                condition_passed = await self._check_auth_condition(step, page)
+                if condition_passed:
+                    self._context.setdefault("steps", {})[step.step_id] = {
+                        "success": True,
+                        "current_url": page.url,
+                    }
+                    prog.status = StepStatus.COMPLETED
+                    prog.completed_at = _utc_now()
+                    state.status = RunStatus.RUNNING
+                    state.updated_at = _utc_now()
+                    self._save_state()
+                    self._emit_event("auth_verified", {"step_id": step.step_id})
+                    break
+                else:
+                    state.status = RunStatus.WAITING_FOR_AUTH
+                    state.updated_at = _utc_now()
+                    self._save_state()
+                    self._emit_event("auth_still_required", {"step_id": step.step_id})
+                    # Loop: wait for next signal_auth()
 
             return _select_outcome(step, self._context, self._evaluator)
 
+        # --- Terminal actions: bypass retry and clarification entirely ---
+        if step.action in _TERMINAL_ACTIONS:
+            prog.attempt_count = 1
+            state.updated_at = _utc_now()
+            self._save_state()
+
+            result = await self._dispatcher.execute(
+                page, step, self._context, self.run_dir, None
+            )
+
+            if step.action == ActionType.END_SUCCESS:
+                prog.status = StepStatus.COMPLETED
+                prog.completed_at = _utc_now()
+                prog.current_url = result.current_url
+                state.status = RunStatus.COMPLETED
+                state.updated_at = _utc_now()
+                self._context.setdefault("steps", {})[step.step_id] = {
+                    "success": True,
+                    "value": result.value,
+                    "current_url": result.current_url,
+                }
+                self._save_state()
+                self._emit_event("step_completed", {"step_id": step.step_id})
+                self._emit_event("run_succeeded", {"run_id": state.run_id})
+                return _select_outcome(step, self._context, self._evaluator)
+
+            if step.action == ActionType.END_FAILURE:
+                prog.status = StepStatus.FAILED
+                prog.error_message = "END_FAILURE"
+                prog.completed_at = _utc_now()
+                state.status = RunStatus.FAILED
+                state.updated_at = _utc_now()
+                self._save_state()
+                self._emit_event("step_failed", {"step_id": step.step_id, "error": "END_FAILURE"})
+                self._emit_event("run_failed", {"reason": "END_FAILURE"})
+                return None
+
+            if step.action == ActionType.DEFERRED:
+                prog.status = StepStatus.FAILED
+                prog.error_message = "DEFERRED_CAPABILITY"
+                prog.completed_at = _utc_now()
+                state.status = RunStatus.WAITING_FOR_DEFERRED_CAPABILITY
+                state.updated_at = _utc_now()
+                self._save_state()
+                self._emit_event("step_failed", {"step_id": step.step_id, "error": "DEFERRED_CAPABILITY"})
+                self._emit_event("capability_deferred", {"step_id": step.step_id})
+                return None
+
+        # --- Resolve template placeholders in step value ---
         resolved_value: str | None = None
         try:
             resolved_value = self._resolver.resolve(step.value, self._context, step.element_name)
@@ -307,13 +391,19 @@ class RunManager:
                 resolved_value = str(resolved_value)
         except Exception as exc:
             prog.status = StepStatus.FAILED
-            prog.error_message = str(exc)
+            prog.error_message = f"VALUE_RESOLUTION_FAILED: {exc}"
             prog.completed_at = _utc_now()
+            state.status = RunStatus.FAILED
             state.updated_at = _utc_now()
             self._save_state()
-            self._emit_event("step_failed", {"step_id": step.step_id, "error": str(exc)})
+            self._emit_event("run_failed", {
+                "step_id": step.step_id,
+                "reason": "VALUE_RESOLUTION_FAILED",
+                "error": str(exc),
+            })
             return None
 
+        # --- Retry loop (max 2 attempts) then clarification ---
         max_attempts = 2
         last_result = None
         for attempt in range(1, max_attempts + 1):
@@ -411,9 +501,8 @@ class RunManager:
         })
         return None
 
-    def signal_auth(self, verified: bool) -> None:
-        """Called by the host to unblock the MANUAL_AUTH await."""
-        self._auth_result = verified
+    def signal_auth(self, verified: bool = True) -> None:
+        """Wake the MANUAL_AUTH await so run_manager can re-evaluate the page condition."""
         self._auth_event.set()
 
     def cancel(self) -> None:
