@@ -51,8 +51,9 @@ def make_valid_result(sop_id: str = "test-sop") -> InterpretationResult:
             OutcomeProposal(
                 outcome_id="login_done",
                 description="Login succeeded",
-                is_terminal=True,
+                is_terminal=False,
                 is_success=True,
+                next_capability_id="create_cap",
             )
         ],
     )

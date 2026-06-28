@@ -70,10 +70,11 @@ class TestTerminalActions:
         assert result.success is False
         assert result.error_message == "MANUAL_AUTH_REQUIRED"
 
-    def test_deferred_returns_success(self, tmp_path: Path) -> None:
+    def test_deferred_returns_failure(self, tmp_path: Path) -> None:
         dispatcher = ActionDispatcher()
         step = _make_step(ActionType.DEFERRED)
         page = _make_page()
         result = asyncio.run(dispatcher.execute(page, step, {}, tmp_path))
         assert isinstance(result, StepResult)
-        assert result.success is True
+        assert result.success is False
+        assert result.error_message == "DEFERRED_CAPABILITY"

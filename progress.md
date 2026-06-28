@@ -9,7 +9,7 @@
 
 ## Backend Current State
 
-**Last updated:** 2026-06-28 (Phase 2 COMPLETE)
+**Last updated:** 2026-06-28 (Authentication Smoke and README Accuracy Patch COMPLETE)
 
 ```
 BE-APP: SOPAutomationV2 — Python CLI automation POC
@@ -32,10 +32,12 @@ BE-MODULES DONE:
   M11 — Phase 2 Wave 3: runtime package + CLI (command_queue, condition_evaluator, page_preparation, locator_service, action_dispatcher, run_manager, host, 6 task commands)
   M12 — Phase 2 Wave 4: tests fixed + new test files written
   M13 — Phase 2 Wave 5: documentation (COPILOT_TASK_PROTOCOL, COPILOT_TASK_PROMPT, MAC_POC_RUNBOOK)
+  M14 — Pre-Mac Round 1 Gate Correction (3 stale tests fixed, smoke test added, run_manager auth loop, host ownership, terminal semantics, README 19 sections)
+  M15 — Authentication Smoke and README Accuracy Patch (MANUAL_AUTH_POSTCONDITION_REQUIRED rule, fail-closed auth, auth context, real fixture auth in smoke test, host continuation test, README path fixes, task status symbols, CLI test timeouts)
 
-BE-ACTIVE: Phase 2 COMPLETE — all waves done
+BE-ACTIVE: Authentication Smoke and README Accuracy Patch COMPLETE — Mac Test Round 1 is next
 
-BE-NEXT: Phase 3 planning — clarification resolution flow, remembered resolutions, resume after partial success
+BE-NEXT: Mac Test Round 1 — run both test groups on Mac, then full end-to-end run against live web app
 
 BE-ENV:
   SOP_WORKSPACE = (optional — default workspace root, read only via config.py)
@@ -56,8 +58,8 @@ BE-PATTERNS:
 
 ## Resume Point
 
-**Active task:** Phase 3 planning (not started)
-**Last file written:** docs/MAC_POC_RUNBOOK.md (Phase 2 Wave 5 docs complete)
+**Active task:** Mac Test Round 1 — install on Mac, run pytest, run full end-to-end
+**Last file written:** response.md (Authentication Smoke and README Accuracy Patch)
 
 **Done within Phase 0:**
 - [x] M1 T1.1: directory tree + pyproject.toml + README + scripts/run.py + __init__.py + SOP/ .gitkeeps
@@ -124,6 +126,17 @@ BE-PATTERNS:
   - docs/COPILOT_TASK_PROTOCOL.md (new)
   - docs/COPILOT_TASK_PROMPT.md (new)
   - docs/MAC_POC_RUNBOOK.md (new)
+
+**Done within Pre-Mac Round 1 Gate Correction (M14):**
+- [x] PA-1: test_storage.py — EXPECTED_SUBDIRS expanded to 15; assertion updated from 9 → 15; method renamed
+- [x] PA-2: test_validation.py — make_valid_result() login_cap outcome: is_terminal=False, next_capability_id="create_cap" (GOAL_REACHABILITY was failing)
+- [x] PA-3: test_action_dispatcher.py — DEFERRED test renamed test_deferred_returns_failure; assertion flipped to success=False, error_message="DEFERRED_CAPABILITY"
+- [x] PB: test_playwright_fixture.py — all 6 test methods rewritten; page fixture removed; each uses inline sync_playwright()+browser+page
+- [x] PC+PE: run_manager.py — MANUAL_AUTH while-loop auth (signal_auth wakes loop; _check_auth_condition evaluates live page); _TERMINAL_ACTIONS block (END_FAILURE/DEFERRED/END_SUCCESS bypass retry); VALUE_RESOLUTION_FAILED → terminal FAILED; cancel during auth guard (check CANCELLED before re-setting WAITING_FOR_AUTH)
+- [x] PE-6: test_run_manager.py — TestTerminalAndFailureSemantics class added (8 tests: END_FAILURE, END_SUCCESS, DEFERRED, value resolution, cancel during auth, terminal stops later steps, no retry, no clarification)
+- [x] PD+PF: host.py — STARTED ack deferred to _execute_run after all 7 startup stages; _TERMINAL_RUN_STATUSES guard in finally block (nonterminal pauses keep slot alive); CONTINUE_RUN uses poll loop not flat sleep; _close_context() helper for startup failures
+- [x] PG: tests/unit/test_runtime_smoke.py — new file; pytest.mark.playwright; _build_smoke_plan() builds login_cap(OPEN+FILL+MANUAL_AUTH+BRANCH)→success_cap(END_SUCCESS)+skip_cap(unreachable); full assertions: COMPLETED, same context, no repeated steps, branch decision persisted, skip_cap not executed
+- [x] PH: README.md — complete rewrite; 19 sections A-S; authoritative Mac POC user guide; all CLI commands verified against argparse parser; no dev/stage/prod profiles; exact Mac commands
 
 **Blockers:** none
 
@@ -205,7 +218,8 @@ SOPAutomationV2/
       test_page_preparation.py   [NEW]
       test_action_dispatcher.py  [NEW]
       test_fixture_app.py        [NEW]
-      test_playwright_fixture.py [NEW — requires playwright installed]
+      test_playwright_fixture.py [NEW — requires playwright; no page fixture dependency]
+      test_runtime_smoke.py      [NEW — pytest.mark.playwright; full smoke test with MANUAL_AUTH pause]
     fixtures/
       sample_nl_sop.txt
       sample_sop.csv
@@ -265,14 +279,17 @@ SOPAutomationV2/
 
 <!-- Add entries after each milestone. Keep last 3. -->
 
+**2026-06-28 — M15 Authentication Smoke and README Accuracy Patch COMPLETE**
+9 files changed: sop_validate.py (MANUAL_AUTH_POSTCONDITION_REQUIRED rule), run_manager.py (fail-closed auth + auth context write), test_runtime_smoke.py (real fixture login: fill password, click Submit, wait_for_url /dashboard), test_runtime_host.py (TestRuntimeHostContinuation), README.md (COPILOT_SOP_AUTHORING_PROTOCOL.md, SOP/compiled/<sop-id>/ paths, task flow without Copilot TaskIntent step), cli.py (cmd_task_status with step symbols), test_cli.py (timeout=20), test_phase1_cli.py (timeout=20). Tests written; not run on coding machine. Mac Test Round 1 is next.
+
+**2026-06-28 — M14 Pre-Mac Round 1 Gate Correction COMPLETE**
+9 files changed: test_storage.py (15-dir count), test_validation.py (GOAL_REACHABILITY fix), test_action_dispatcher.py (DEFERRED flip), test_playwright_fixture.py (no page fixture), run_manager.py (auth while-loop + terminal semantics + VALUE_RESOLUTION_FAILED), test_run_manager.py (8 terminal/failure tests), host.py (deferred STARTED + nonterminal ownership + poll loop), test_runtime_smoke.py (new smoke test), README.md (19 sections A-S). Tests written; not run on coding machine. Mac Test Round 1 is next.
+
 **2026-06-28 — Phase 2 Wave 5 COMPLETE — documentation**
-3 new docs written: COPILOT_TASK_PROTOCOL.md (7-step task execution protocol), COPILOT_TASK_PROMPT.md (exact Copilot Chat prompt format with examples), MAC_POC_RUNBOOK.md (macOS install + end-to-end run guide). response.md overwritten with full Phase 2 summary. progress.md updated to mark Phase 2 COMPLETE. Phase 3 planning is next.
+3 new docs written: COPILOT_TASK_PROTOCOL.md (7-step task execution protocol), COPILOT_TASK_PROMPT.md (exact Copilot Chat prompt format with examples), MAC_POC_RUNBOOK.md (macOS install + end-to-end run guide). response.md overwritten with full Phase 2 summary. progress.md updated to mark Phase 2 COMPLETE.
 
 **2026-06-28 — Phase 2 Wave 4 COMPLETE — tests written (not run)**
 Fixed 2 failing tests (branch edge, directory count). Updated 4 existing test files and 4 fixture JSONs. Added 10 new test files: test_condition_evaluator, test_command_queue, test_sop_selector, test_task_intent, test_run_manager, test_runtime_host, test_page_preparation, test_action_dispatcher, test_fixture_app, test_playwright_fixture. Added tests/fixtures/local_fixture_app.py (stdlib HTTP server, no third-party deps).
-
-**2026-06-28 — Phase 2 Waves 1–3 COMPLETE — models, services, runtime, CLI**
-Wave 1: GoalDefinition, WaitConditionSpec, TaskIntent, RuntimeCommand, PlannedCapability, WorkspacePaths x13, pyproject.toml flat deps. Wave 2: SopCompileService GoalDefinition output, SopValidateService +6 rules, SopSelectorService (new), TaskIntentService (new), TaskPlanService PlannedCapability groups. Wave 3: full runtime/ package (7 modules), CLI runtime start + 6 task commands, NOT_IMPLEMENTED_IN_POC label.
 
 **2026-06-28 — Phase 1 correction pass — tests, fixtures, response (M8 COMPLETE)**
 Tests updated for clean schemas: test_task_plan rewritten (typed PlannedStep/BranchPoint/CapabilityEdge, no Phase 0 fields); test_compilation _make_passing_report + _make_failing_report now include request_sha256/result_sha256; test_validation +6 tests; test_preprocessing +5 tests; test_models +8 new tests; test_phase1_cli SRC_PATH fixed; fixtures: sample_compiled_sop.json rewritten, valid_interpretation_result.json updated, deferred_branch.json updated; response.md overwritten.

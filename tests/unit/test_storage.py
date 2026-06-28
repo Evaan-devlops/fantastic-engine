@@ -173,16 +173,22 @@ class TestWorkspaceServiceInit:
         "routes",
         "tool_build_requests",
         "tools",
+        "generated",
+        "runtime",
+        str(Path("runtime") / "commands"),
+        str(Path("runtime") / "acknowledgements"),
+        str(Path("runtime") / "processed"),
+        str(Path("runtime") / "failed"),
     ]
 
-    def test_init_creates_all_nine_directories(self, tmp_path: Path) -> None:
+    def test_init_creates_all_fifteen_directories(self, tmp_path: Path) -> None:
         service = WorkspaceService()
         results = service.init(tmp_path)
 
         created_names = [rel for rel, _ in results]
         statuses = [status for _, status in results]
 
-        assert len(results) == 9
+        assert len(results) == 15
         assert all(status == "CREATED" for status in statuses)
 
         for subdir in self.EXPECTED_SUBDIRS:
