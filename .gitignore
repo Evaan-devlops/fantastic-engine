@@ -1,24 +1,158 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-*.egg-info/
-dist/
-build/
+# Operating-system files
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+.fseventsd
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
 
-# Virtual environments
+# Python bytecode and caches
+__pycache__/
+pycache/
+*.py[cod]
+*$py.class
+*.pyo
+*.pyd
+
+# Python virtual environments
 .venv/
 venv/
+env/
+ENV/
+.python-version
 
-# Tool caches
-.mypy_cache/
-.ruff_cache/
+# Python package and build artifacts
+build/
+dist/
+wheelhouse/
+*.egg
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+
+# Test, coverage, lint, and type-check caches
 .pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+.mypy_cache/
+.pyright/
+.pytype/
+.ruff_cache/
+.hypothesis/
 
-# Local environment
+# IDE and editor-local files
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*.swn
+*~
+.project
+.pydevproject
+
+# Environment files and secrets
 .env
 .env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+secrets/
+credentials/
+auth/
+cookies.json
+storage_state.json
 
-# OS
-.DS_Store
-Thumbs.db
+# Logs and temporary files
+*.log
+*.tmp
+*.temp
+*.bak
+*.old
+tmp/
+temp/
+.cache/
+
+# Browser and Playwright local artifacts
+.browser-profiles/
+browser-profiles/
+playwright-report/
+test-results/
+blob-report/
+trace.zip
+
+# Runtime command queue generated on the Mac
+SOP/runtime/commands/*
+!SOP/runtime/commands/.gitkeep
+SOP/runtime/acknowledgements/*
+!SOP/runtime/acknowledgements/.gitkeep
+SOP/runtime/processed/*
+!SOP/runtime/processed/.gitkeep
+SOP/runtime/failed/*
+!SOP/runtime/failed/.gitkeep
+
+# Runtime runs and evidence, machine/user specific
+SOP/runs/*
+!SOP/runs/.gitkeep
+
+# Learned runtime corrections and routes generated during real execution
+SOP/resolutions/*
+!SOP/resolutions/.gitkeep
+SOP/routes/*
+!SOP/routes/.gitkeep
+
+# Generated SOP compilation artifacts reproducible from preserved SOP sources
+SOP/compiled/*
+!SOP/compiled/.gitkeep
+SOP/manifests/*
+!SOP/manifests/.gitkeep
+SOP/generated/*
+!SOP/generated/.gitkeep
+
+# Temporary incoming task/SOP files
+SOP/inbox/*
+!SOP/inbox/.gitkeep
+!SOP/inbox/README.md
+
+# Tool-build runtime requests and results
+SOP/tool_build_requests/*
+!SOP/tool_build_requests/.gitkeep
+SOP/tool_build_results/*
+!SOP/tool_build_results/.gitkeep
+
+# Local SQLite/database files
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# Local archives and package copies
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+
+# Claude/Codex coding prompts accidentally placed in product
+Claude_*.txt
+Codex_*.txt
+*_Coding_Prompt.txt
+*_Correction_Prompt.txt
+*_Start_Message.txt
+
+# Miscellaneous generated files
+nohup.out
+*.pid
+*.lock
