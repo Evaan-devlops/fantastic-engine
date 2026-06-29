@@ -1,0 +1,96 @@
+Correct only this file:
+
+"SOP/compiled/onetrust_get_code/interpretation_result.json"
+
+Do not modify:
+
+- the original SOP
+- "interpretation_request.json"
+- production Python code
+- tests
+- documentation
+
+The current result failed Pydantic validation with exactly 10 schema errors.
+
+Required fixes
+
+1. Remove unsupported "capability_sequence"
+
+The field at:
+
+"capabilities.0.capability_sequence"
+
+is not allowed by the "InterpretationResult" schema.
+
+Remove that field completely.
+
+Do not replace it with another invented field. Preserve capability ordering using the normal order of the "capabilities" array and the existing step dependency/branch fields supported by the schema.
+
+2. Convert every string "wait_condition" into a valid "WaitConditionSpec"
+
+These paths currently contain plain strings and must instead contain structured objects matching the exact "WaitConditionSpec" schema used by this repository:
+
+- "capabilities.0.steps.0.wait_condition"
+- "capabilities.0.steps.2.wait_condition"
+- "capabilities.0.steps.4.wait_condition"
+- "capabilities.1.steps.3.wait_condition"
+- "capabilities.2.steps.0.wait_condition"
+- "capabilities.2.steps.1.wait_condition"
+- "capabilities.2.steps.3.wait_condition"
+- "capabilities.2.steps.4.wait_condition"
+- "capabilities.2.steps.5.wait_condition"
+
+Before editing, inspect the authoritative schema and examples in:
+
+1. "docs/COPILOT_SOP_AUTHORING_PROMPT.md"
+2. "SOP/compiled/onetrust_get_code/interpretation_request.json"
+3. The Pydantic model that defines "WaitConditionSpec"
+4. Existing valid test fixtures or example interpretation results in this repository
+
+Do not guess the field names or enums.
+
+Represent each wait condition using only fields allowed by "WaitConditionSpec", choosing the appropriate supported condition type for the original intent, such as:
+
+- page/DOM readiness
+- URL verification
+- element visibility
+- search-results visibility
+- text or status equality
+- menu visibility
+- modal visibility
+
+Preserve the meaning of the original waits, but express them strictly through the supported structured schema.
+
+Preserve all valid content
+
+Do not weaken or remove:
+
+- "MANUAL_AUTH"
+- the post-auth URL verification
+- capability and step IDs
+- dependencies
+- branch destinations
+- input placeholders
+- output definitions
+- terminal outcomes
+- request ID
+- SOP ID
+- source hash
+- source references
+
+Do not add credentials, usernames, passwords, OTPs, cookies, tokens, or secrets.
+
+After editing, ensure the file remains valid JSON.
+
+Run this validation command yourself if Agent mode permits terminal execution:
+
+".venv/bin/python -m sop_automation sop validate-result --result "SOP/compiled/onetrust_get_code/interpretation_result.json""
+
+Continue correcting only "interpretation_result.json" until the validator reports success.
+
+At completion, report:
+
+- which unsupported field was removed
+- how the nine wait conditions were converted
+- the exact validation result
+- confirmation that no other file was changed
