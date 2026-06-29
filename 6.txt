@@ -1,0 +1,106 @@
+Yes—abc.com is a valid choice because it exists and its scan status is Completed.
+
+The login flow you described is also expected:
+
+1. OneTrust login page loads.
+
+
+2. Click Next.
+
+
+3. Another page/tab opens for credentials and MFA.
+
+
+4. After authentication, return to:
+
+
+
+https://uat-de.onetrust.com/cookies/websites
+
+Important: use the automation browser
+
+The browser in your photo is Microsoft Edge with your existing tabs. The runtime cannot control or inspect that normal Edge session.
+
+After submitting the task, Playwright should open its own Chromium browser window. Complete the login only inside that newly opened automation browser.
+
+Keep Terminal 1 running:
+
+Watching for commands. Press Ctrl+C to stop.
+
+Terminal 2 — validate and submit
+
+First ensure the corrected TaskIntent is saved, then run:
+
+INTENT_FILE="$(ls -t SOP/generated/*_task_intent.json | head -n 1)"
+
+.venv/bin/python -m sop_automation task validate-intent \
+  --intent-file "$INTENT_FILE"
+
+Expected:
+
+Intent validation: PASS
+
+Then submit:
+
+.venv/bin/python -m sop_automation task submit \
+  --intent-file "$INTENT_FILE"
+
+Expected:
+
+STARTED
+Run ID: <actual-run-id>
+
+Save it:
+
+RUN_ID="<paste-the-actual-run-id>"
+
+In the newly opened Chromium browser
+
+Complete the entire authentication flow manually:
+
+1. Wait for the first OneTrust login page to load.
+
+
+2. Click Next.
+
+
+3. Wait for the credential page or new authentication tab.
+
+
+4. Enter credentials and complete MFA manually.
+
+
+5. Return to the original OneTrust tab if necessary.
+
+
+6. Wait until this exact page is completely visible:
+
+
+
+https://uat-de.onetrust.com/cookies/websites
+
+Do not close any browser tab or the Chromium window.
+
+Check status and continue
+
+In Terminal 2:
+
+.venv/bin/python -m sop_automation task status --run-id "$RUN_ID"
+
+Expected:
+
+WAITING_FOR_AUTH
+
+Once the Websites page is fully loaded:
+
+.venv/bin/python -m sop_automation task continue --run-id "$RUN_ID"
+
+Expected:
+
+AUTH_VERIFIED
+
+The runtime should then search for abc.com, verify Completed, open its details, select Copy production scripts, and capture the data-domain-script.
+
+If authentication opens a separate tab and the runtime cannot resume after you return to the Websites page, that is likely the known popup/new-page ownership limitation—not a mistake by you. In that case, do not repeatedly submit; capture Terminal 1 output and the result of:
+
+.venv/bin/python -m sop_automation task status --run-id "$RUN_ID"
