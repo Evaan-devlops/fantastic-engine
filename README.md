@@ -450,3 +450,12 @@ This README describes the POC as implemented and tested by automated tests as of
 Do not use statements such as "fully working", "production ready", or "verified on Mac" until Mac evidence exists.
 
 All commands in this README exactly match the implemented CLI argument parser in `src/sop_automation/cli.py`.
+**************************************
+
+.venv/bin/python -m pytest -q tests/unit/test_textbox_locator_resolution.py
+
+.venv/bin/python -m pytest -q tests/unit/test_runtime_textbox_playwright.py
+
+.venv/bin/python -m pytest -q -m "not playwright"
+
+.venv/bin/python -m pytest -q -m playwright
