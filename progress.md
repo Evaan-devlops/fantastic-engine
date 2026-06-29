@@ -9,7 +9,7 @@
 
 ## Backend Current State
 
-**Last updated:** 2026-06-28 (Authentication Smoke and README Accuracy Patch COMPLETE)
+**Last updated:** 2026-06-29 (Milestone 1 Final Sequential Completion — Stages 1-5 COMPLETE)
 
 ```
 BE-APP: SOPAutomationV2 — Python CLI automation POC
@@ -35,7 +35,7 @@ BE-MODULES DONE:
   M14 — Pre-Mac Round 1 Gate Correction (3 stale tests fixed, smoke test added, run_manager auth loop, host ownership, terminal semantics, README 19 sections)
   M15 — Authentication Smoke and README Accuracy Patch (MANUAL_AUTH_POSTCONDITION_REQUIRED rule, fail-closed auth, auth context, real fixture auth in smoke test, host continuation test, README path fixes, task status symbols, CLI test timeouts)
 
-BE-ACTIVE: Authentication Smoke and README Accuracy Patch COMPLETE — Mac Test Round 1 is next
+BE-ACTIVE: Milestone 1 Final Sequential Completion COMPLETE (Stages 1-5) — Mac Test Round 1 is next
 
 BE-NEXT: Mac Test Round 1 — run both test groups on Mac, then full end-to-end run against live web app
 
@@ -278,6 +278,9 @@ SOPAutomationV2/
 ## Backend Dev Log
 
 <!-- Add entries after each milestone. Keep last 3. -->
+
+**2026-06-29 — Milestone 1 Final Sequential Completion COMPLETE (Stages 1-5)**
+ZIP-12 defect fixes: Stage 1 — secret redaction applied to task_plan.json + run_state.json writes; redact_mapping() now recurses into list-of-dict; api_key keyword added; 8 gate tests in test_secret_persistence.py. Stage 2 — fill retention always checked (guard removed); retryable_error_codes honoured in _is_retryable_failure; _evaluate_once uses non-waiting _probe_once path; DOWNLOAD+COPY run through _with_postcondition. Stage 3 — AUTH_BRANCH validation rules (6 rules) in sop_validate.py; auth_classifier SSO check precedes body text; email-type inputs in USERNAME_PASSWORD selector; BRANCH_NOT_RECOGNIZED failure on unmatched AUTH_BRANCH. Stage 4 — _AUTH_SIGN_IN_HTML + _AUTH_MANUAL_WAITING_HTML + _AUTH_AUTHENTICATED_HTML + _AUTH_LOGIN_INTERCEPT_HTML in local_fixture_app.py; 7 new Playwright auth-route tests in test_auth_route_playwright.py. Stage 5 — CandidateAttempt dataclass in diagnostics.py; LocatorError.attempts list; LocatorService._collect_attempts() probes each strategy after timeout; StepResult.locator_attempts: list[dict]; clarification_request.json includes locator_attempts; 6 gate tests in test_runtime_reliability.py Stage 5 section. Tests written; not run on coding machine.
 
 **2026-06-28 — M15 Authentication Smoke and README Accuracy Patch COMPLETE**
 9 files changed: sop_validate.py (MANUAL_AUTH_POSTCONDITION_REQUIRED rule), run_manager.py (fail-closed auth + auth context write), test_runtime_smoke.py (real fixture login: fill password, click Submit, wait_for_url /dashboard), test_runtime_host.py (TestRuntimeHostContinuation), README.md (COPILOT_SOP_AUTHORING_PROTOCOL.md, SOP/compiled/<sop-id>/ paths, task flow without Copilot TaskIntent step), cli.py (cmd_task_status with step symbols), test_cli.py (timeout=20), test_phase1_cli.py (timeout=20). Tests written; not run on coding machine. Mac Test Round 1 is next.

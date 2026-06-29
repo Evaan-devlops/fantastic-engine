@@ -131,6 +131,7 @@ class SopCompileService:
                     capability_id=cap_proposal.capability_id,      # required
                     value=sp.value,
                     wait_condition=sp.wait_condition,
+                    postcondition=sp.postcondition,
                     wait_condition_notes=sp.wait_condition_notes,
                     expected_outcomes=[
                         OutcomeRule(
@@ -295,9 +296,12 @@ class SopCompileService:
                     wait_part = (
                         f" (wait: {step.wait_condition.type})" if step.wait_condition else ""
                     )
+                    post_part = (
+                        f" (post: {step.postcondition.type})" if step.postcondition else ""
+                    )
                     lines.append(
                         f"{step.sequence}. `{step.action}` **{step.element_name}**"
-                        f" ({step.element_type}){val_part}{wait_part}"
+                        f" ({step.element_type}){val_part}{wait_part}{post_part}"
                     )
                     if step.dependencies:
                         lines.append(

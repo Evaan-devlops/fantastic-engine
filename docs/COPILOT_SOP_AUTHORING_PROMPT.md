@@ -115,7 +115,8 @@ The JSON must conform EXACTLY to this schema. Extra fields will be REJECTED.
   "element_name": "<UI element name>",
   "element_type": "<ElementType>",
   "value": null,                       // or string — required for FILL
-  "wait_condition": null,              // or string
+  "wait_condition": null,              // optional pre-action readiness condition
+  "postcondition": null,               // optional post-action completion condition
   "expected_outcomes": [ <OutcomeProposal ...> ],
   "dependencies": [ "<step_id>" ],    // step_ids in SAME capability only
   "notes": null,                       // or string
@@ -126,7 +127,7 @@ The JSON must conform EXACTLY to this schema. Extra fields will be REJECTED.
 Valid ActionType values:
   OPEN, CLICK, FILL, PRESS, SELECT, CHECK, UNCHECK,
   UPLOAD, DOWNLOAD, COPY, WAIT, VERIFY, HANDLE_POPUP,
-  MANUAL_AUTH, BRANCH, END_SUCCESS, END_FAILURE, DEFERRED
+  MANUAL_AUTH, BRANCH, AUTH_BRANCH, END_SUCCESS, END_FAILURE, DEFERRED
 
 Valid ElementType values:
   PAGE, BUTTON, LINK, TEXTBOX, TEXTAREA, DROPDOWN, OPTION,
@@ -192,12 +193,18 @@ Valid InferenceSource values:
    Only use fields defined in this schema.
 4. MANUAL_AUTH steps must NOT contain passwords, OTPs, tokens, cookies,
    MFA codes, secrets, or any credential material in the value field.
-5. Deferred capabilities: set is_deferred: true and leave steps: [].
-6. Input placeholders: use {{input.name}} exactly (double braces).
-7. Confidence must be a float between 0.0 and 1.0 inclusive.
-8. evidence_lines must be 1-based line numbers from the source text.
-9. dependency step_ids must exist within the SAME capability only.
-10. request_id and source_sha256 in source_reference must be COPIED EXACTLY
+5. wait_condition is only for readiness before an action. It does not prove
+   that the action completed.
+6. postcondition proves completion after an action. Submission/navigation
+   CLICK steps and MANUAL_AUTH steps must have an explicit postcondition.
+7. Use AUTH_BRANCH only for generic authentication-state classification.
+   Use BRANCH for normal business-rule branching.
+8. Deferred capabilities: set is_deferred: true and leave steps: [].
+9. Input placeholders: use {{input.name}} exactly (double braces).
+10. Confidence must be a float between 0.0 and 1.0 inclusive.
+11. evidence_lines must be 1-based line numbers from the source text.
+12. dependency step_ids must exist within the SAME capability only.
+13. request_id and source_sha256 in source_reference must be COPIED EXACTLY
     from the interpretation_request.json — do not generate new values.
 
 ---

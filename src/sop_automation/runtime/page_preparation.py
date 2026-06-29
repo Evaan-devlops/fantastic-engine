@@ -31,13 +31,38 @@ class PagePreparationService:
         timeout_ms: int = 10000,
     ) -> None:
         """Ensure element is visible and enabled before interaction."""
+        try:
+            await locator.wait_for(state="attached", timeout=timeout_ms)
+        except Exception as exc:
+            raise PagePreparationError(f"Element was not attached within timeout: {exc}") from exc
+
         await locator.wait_for(state="visible", timeout=timeout_ms)
+        try:
+            await locator.scroll_into_view_if_needed(timeout=timeout_ms)
+        except Exception:
+            pass
+
         deadline = time.monotonic() + timeout_ms / 1000
         while time.monotonic() < deadline:
             if await locator.is_enabled():
                 return
             await asyncio.sleep(0.1)
         raise PagePreparationError("Element did not become enabled within timeout")
+
+    async def ensure_editable(
+        self,
+        locator: "Locator",
+        timeout_ms: int = 10000,
+    ) -> None:
+        deadline = time.monotonic() + timeout_ms / 1000
+        while time.monotonic() < deadline:
+            try:
+                if await locator.is_editable():
+                    return
+            except Exception:
+                pass
+            await asyncio.sleep(0.1)
+        raise PagePreparationError("Element did not become editable within timeout")
 
     async def _ensure_page_ready(self, page: "Page") -> None:
         try:

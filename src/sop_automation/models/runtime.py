@@ -61,3 +61,4 @@ class StepResult(FrozenModel):
     error_message: str | None = None
     screenshot_path: str | None = None
     locator_candidates: list[str] = Field(default_factory=list)
+    locator_attempts: list[dict[str, Any]] = Field(default_factory=list)

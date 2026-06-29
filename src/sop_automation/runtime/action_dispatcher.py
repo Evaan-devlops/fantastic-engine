@@ -1,16 +1,17 @@
 """Playwright action dispatcher — one handler per ActionType."""
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING, Any
 
-from sop_automation.models.common import ActionType, ElementType
+from sop_automation.models.common import ActionType
 from sop_automation.models.runtime import StepResult
-from sop_automation.models.sop import WaitConditionSpec
 from sop_automation.models.task import PlannedStep
+from sop_automation.runtime.auth_classifier import classify_auth_branch
 from sop_automation.runtime.condition_evaluator import ConditionEvaluator
+from sop_automation.runtime.diagnostics import classify_failure, redact_text
 from sop_automation.runtime.locator_service import LocatorError, LocatorService
 from sop_automation.runtime.page_preparation import PagePreparationService
+from sop_automation.runtime.postconditions import PostconditionEvaluator
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
@@ -49,6 +50,7 @@ class ActionDispatcher:
     def __init__(self) -> None:
         self._locator_svc = LocatorService()
         self._page_prep = PagePreparationService()
+        self._postconditions = PostconditionEvaluator(self._locator_svc)
 
     async def execute(
         self,
@@ -62,25 +64,26 @@ class ActionDispatcher:
         value = resolved_value if resolved_value is not None else step.value
         try:
             if action == ActionType.OPEN:
-                return await self._open(page, step, value)
+                return await self._with_postcondition(page, step, await self._open(page, step, value))
             if action == ActionType.CLICK:
-                return await self._click(page, step)
+                return await self._with_postcondition(page, step, await self._click(page, step))
             if action == ActionType.FILL:
-                return await self._fill(page, step, value)
+                result = await self._fill(page, step, value)
+                return await self._with_postcondition(page, step, result)
             if action == ActionType.PRESS:
-                return await self._press(page, step, value)
+                return await self._with_postcondition(page, step, await self._press(page, step, value))
             if action == ActionType.SELECT:
-                return await self._select(page, step, value)
+                return await self._with_postcondition(page, step, await self._select(page, step, value))
             if action == ActionType.CHECK:
-                return await self._check(page, step)
+                return await self._with_postcondition(page, step, await self._check(page, step))
             if action == ActionType.UNCHECK:
-                return await self._uncheck(page, step)
+                return await self._with_postcondition(page, step, await self._uncheck(page, step))
             if action == ActionType.UPLOAD:
-                return await self._upload(page, step, value)
+                return await self._with_postcondition(page, step, await self._upload(page, step, value))
             if action == ActionType.DOWNLOAD:
-                return await self._download(page, step, run_dir)
+                return await self._with_postcondition(page, step, await self._download(page, step, run_dir))
             if action == ActionType.COPY:
-                return await self._copy(page, step, context)
+                return await self._with_postcondition(page, step, await self._copy(page, step, context))
             if action == ActionType.WAIT:
                 return await self._wait(page, step)
             if action == ActionType.VERIFY:
@@ -96,6 +99,14 @@ class ActionDispatcher:
                 )
             if action == ActionType.BRANCH:
                 return StepResult(step_id=step.step_id, success=True, current_url=page.url)
+            if action == ActionType.AUTH_BRANCH:
+                branch = await classify_auth_branch(page)
+                return StepResult(
+                    step_id=step.step_id,
+                    success=True,
+                    value=branch.value,
+                    current_url=page.url,
+                )
             if action == ActionType.END_SUCCESS:
                 return StepResult(
                     step_id=step.step_id,
@@ -124,18 +135,22 @@ class ActionDispatcher:
             )
         except LocatorError as exc:
             candidates = await _get_visible_candidates(page)
+            message = redact_text(str(exc))
+            attempts = [a.to_dict() for a in exc.attempts]
             return StepResult(
                 step_id=step.step_id,
                 success=False,
-                error_message=str(exc),
+                error_message=f"{classify_failure(message)}: {message}",
                 current_url=page.url,
                 locator_candidates=candidates,
+                locator_attempts=attempts,
             )
         except Exception as exc:
+            message = redact_text(str(exc))
             return StepResult(
                 step_id=step.step_id,
                 success=False,
-                error_message=str(exc),
+                error_message=f"{classify_failure(message)}: {message}",
                 current_url=page.url,
             )
 
@@ -149,16 +164,18 @@ class ActionDispatcher:
 
     async def _click(self, page: "Page", step: PlannedStep) -> StepResult:
         locator = await self._locator_svc.locate(page, step.element_name, step.element_type)
-        await self._page_prep.ensure_actionable(locator)
         await self._page_prep.prepare(page, step.wait_condition, locator)
+        await self._page_prep.ensure_actionable(locator)
         await locator.click()
         return StepResult(step_id=step.step_id, success=True, current_url=page.url)
 
     async def _fill(self, page: "Page", step: PlannedStep, value: str | None) -> StepResult:
         locator = await self._locator_svc.locate(page, step.element_name, step.element_type)
-        await self._page_prep.ensure_actionable(locator)
         await self._page_prep.prepare(page, step.wait_condition, locator)
+        await self._page_prep.ensure_actionable(locator)
+        await self._page_prep.ensure_editable(locator)
         await locator.fill(value or "")
+        await self._confirm_filled_value(locator, value or "")
         return StepResult(step_id=step.step_id, success=True, current_url=page.url)
 
     async def _press(self, page: "Page", step: PlannedStep, value: str | None) -> StepResult:
@@ -261,3 +278,41 @@ class ActionDispatcher:
         popup = await popup_info.value
         await popup.wait_for_load_state("domcontentloaded")
         return StepResult(step_id=step.step_id, success=True, current_url=popup.url)
+
+    async def _confirm_postcondition(
+        self,
+        page: "Page",
+        step: PlannedStep,
+        locator: object,
+    ) -> None:
+        if step.postcondition is not None:
+            result = await self._postconditions.evaluate(
+                page, step.postcondition, locator  # type: ignore[arg-type]
+            )
+            if not result.satisfied:
+                raise RuntimeError(
+                    "POSTCONDITION_NOT_MET: "
+                    f"type={step.postcondition.type.value} "
+                    f"element={step.postcondition.element_name!r} "
+                    f"observed={result.signals} error={result.error}"
+                )
+
+    async def _with_postcondition(
+        self,
+        page: "Page",
+        step: PlannedStep,
+        result: StepResult,
+    ) -> StepResult:
+        if result.success and step.postcondition is not None:
+            await self._confirm_postcondition(page, step, None)
+        return result
+
+    async def _confirm_filled_value(self, locator: object, expected: str) -> None:
+        try:
+            actual = await locator.input_value()  # type: ignore[attr-defined]
+        except Exception as exc:
+            raise RuntimeError(
+                f"POSTCONDITION_NOT_MET: could not verify filled value: {exc}"
+            ) from exc
+        if actual != expected:
+            raise RuntimeError("POSTCONDITION_NOT_MET: filled value was not retained")

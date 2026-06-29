@@ -61,9 +61,16 @@ class FakeLocator:
     async def is_enabled(self) -> bool:
         return True
 
+    async def is_editable(self) -> bool:
+        return True
+
     async def fill(self, value: str) -> None:
         target = self._parent or self
         target.filled_value = value
+
+    async def input_value(self) -> str:
+        target = self._parent or self
+        return target.filled_value or ""
 
 
 class FakeElement:

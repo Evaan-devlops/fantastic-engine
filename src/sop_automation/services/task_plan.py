@@ -131,10 +131,12 @@ class TaskPlanService:
                     element_type=step.element_type,
                     value=step.value,
                     wait_condition=step.wait_condition,
+                    postcondition=step.postcondition,
                     wait_condition_notes=step.wait_condition_notes,
                     dependencies=step.dependencies,
                     outcomes=planned_outcomes,
                     source_line=step.source_line,
+                    retry_policy=step.retry_policy,
                 ))
 
                 # Branch point: step has any outcome with next_capability_id

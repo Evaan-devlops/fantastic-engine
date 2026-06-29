@@ -1,7 +1,6 @@
 """Task intent and task plan models."""
 from __future__ import annotations
 
-import asyncio
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -9,7 +8,7 @@ from typing import Any
 from pydantic import Field
 
 from sop_automation.models.common import ActionType, ElementType, FrozenModel
-from sop_automation.models.sop import ConditionSpec, WaitConditionSpec
+from sop_automation.models.sop import ConditionSpec, RetryPolicy, WaitConditionSpec
 
 
 class TaskIntent(FrozenModel):
@@ -62,10 +61,12 @@ class PlannedStep(FrozenModel):
     element_type: ElementType
     value: str | None = None
     wait_condition: WaitConditionSpec | None = None
+    postcondition: WaitConditionSpec | None = None
     wait_condition_notes: str | None = None
     dependencies: list[str] = Field(default_factory=list)
     outcomes: list[PlannedOutcome] = Field(default_factory=list)
     source_line: int | None = None
+    retry_policy: RetryPolicy = Field(default_factory=RetryPolicy)
 
 
 class PlannedCapability(FrozenModel):

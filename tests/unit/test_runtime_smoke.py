@@ -66,6 +66,7 @@ def _build_smoke_plan(base_url: str, username: str = "testuser") -> TaskPlan:
         value: str | None = None,
         outcomes: list[PlannedOutcome] | None = None,
         wait_condition: WaitConditionSpec | None = None,
+        postcondition: WaitConditionSpec | None = None,
     ) -> PlannedStep:
         return PlannedStep(
             capability_id=cap_id,
@@ -79,6 +80,7 @@ def _build_smoke_plan(base_url: str, username: str = "testuser") -> TaskPlan:
             value=value,
             outcomes=outcomes or [],
             wait_condition=wait_condition,
+            postcondition=postcondition,
         )
 
     # login_cap steps
@@ -95,7 +97,7 @@ def _build_smoke_plan(base_url: str, username: str = "testuser") -> TaskPlan:
     step_auth = _step(
         "step_auth", "login_cap", 3,
         ActionType.MANUAL_AUTH, "auth_gate", ElementType.PAGE,
-        wait_condition=WaitConditionSpec(
+        postcondition=WaitConditionSpec(
             type=WaitConditionType.URL_CONTAINS,
             expected_value="/dashboard",
         ),
