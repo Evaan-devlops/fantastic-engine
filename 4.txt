@@ -1,0 +1,130 @@
+Good—the TaskIntent was created successfully. In this version, task prepare-intent produced the final intent directly, so no additional Copilot step is needed.
+
+Before running the browser, check one thing:
+
+> target_website_url=abc.com must be the real website already present in OneTrust.
+
+
+
+If abc.com was only a sample, edit first_task.txt and regenerate the intent before continuing.
+
+1. Capture the generated TaskIntent path
+
+Run:
+
+INTENT_FILE="$(ls -t SOP/generated/*_task_intent.json | head -n 1)"
+echo "$INTENT_FILE"
+
+Expected:
+
+SOP/generated/90a0d56e..._task_intent.json
+
+2. Inspect the TaskIntent
+
+.venv/bin/python -m json.tool "$INTENT_FILE"
+
+Confirm it contains:
+
+onetrust_get_code
+retrieve_data_domain_script
+target_website_url
+abc.com
+
+Do not continue if the target URL is incorrect.
+
+3. Validate the TaskIntent
+
+.venv/bin/python -m sop_automation task validate-intent \
+  --intent-file "$INTENT_FILE"
+
+Expected:
+
+PASS
+
+There must be no validation errors.
+
+
+---
+
+Start the live test
+
+You now need two VS Code terminals.
+
+Terminal 1 — start the runtime host
+
+Click the + button in the Terminal panel to open a new terminal, then run:
+
+.venv/bin/python -m sop_automation runtime start
+
+Expected:
+
+The command remains running.
+
+It waits for runtime commands.
+
+Do not close this terminal.
+
+It may print that the runtime host is ready.
+
+
+Terminal 2 — submit the task
+
+Return to the other terminal and recreate the variable there:
+
+INTENT_FILE="$(ls -t SOP/generated/*_task_intent.json | head -n 1)"
+
+Then submit:
+
+.venv/bin/python -m sop_automation task submit \
+  --intent-file "$INTENT_FILE"
+
+Expected output should include something similar to:
+
+STARTED
+Run ID: <run-id>
+
+Save the Run ID:
+
+RUN_ID="<paste-the-run-id-here>"
+
+Check the run status
+
+.venv/bin/python -m sop_automation task status --run-id "$RUN_ID"
+
+Expected first states may be:
+
+RUNNING
+
+or:
+
+WAITING_FOR_AUTH
+
+When the browser opens
+
+Complete these manually:
+
+1. Enter your OneTrust username/password.
+
+
+2. Complete MFA/OTP.
+
+
+3. Wait until this page is fully visible:
+
+
+
+https://uat-de.onetrust.com/cookies/websites
+
+Do not close the Chromium browser.
+
+Then resume:
+
+.venv/bin/python -m sop_automation task continue --run-id "$RUN_ID"
+
+Expected:
+
+AUTH_VERIFIED
+
+The automation should then search for abc.com, open the existing website, wait for scan status, open the menu, select Copy production scripts, and extract the data-domain-script.
+
+Start with the TaskIntent validation command first.
