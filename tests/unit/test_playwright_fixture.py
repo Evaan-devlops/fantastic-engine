@@ -65,17 +65,29 @@ class TestPlaywrightFixtureApp:
             finally:
                 browser.close()
 
-    def test_download_endpoint_triggers_download(self, fixture_url: str) -> None:
+    def test_download_endpoint_triggers_download(self, fixture_url: str, tmp_path: Path) -> None:
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as pw:
             browser = pw.chromium.launch(headless=True)
             try:
-                page = browser.new_page()
+                context = browser.new_context(accept_downloads=True)
+                page = context.new_page()
+                download_url = f"{fixture_url}/download"
+                response = page.request.get(download_url)
+                assert response.ok
+                assert response.headers["content-disposition"] == "attachment; filename=sample.txt"
+                assert response.body() == b"sample content"
+
+                page.set_content(f'<a id="download-link" href="{download_url}">Download sample</a>')
                 with page.expect_download() as download_info:
-                    page.goto(f"{fixture_url}/download")
+                    page.click("#download-link")
                 download = download_info.value
                 assert download.suggested_filename == "sample.txt"
+                assert download.failure() is None
+                saved_path = tmp_path / download.suggested_filename
+                download.save_as(saved_path)
+                assert saved_path.read_bytes() == b"sample content"
             finally:
                 browser.close()
 
