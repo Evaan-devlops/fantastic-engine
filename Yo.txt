@@ -1,0 +1,93 @@
+Success—the SOP preparation step completed correctly.
+
+Your generated request is here:
+
+SOP/compiled/onetrust_get_code/interpretation_request.json
+
+The application explicitly says Copilot must now create:
+
+SOP/compiled/onetrust_get_code/interpretation_result.json
+
+Do not move either file.
+
+1. Open GitHub Copilot Chat
+
+In VS Code, open Copilot Chat and use Agent mode so it can read and create files.
+
+Paste this prompt:
+
+Read these files completely:
+
+1. "docs/COPILOT_SOP_AUTHORING_PROMPT.md"
+2. "SOP/compiled/onetrust_get_code/interpretation_request.json"
+3. "SOP/inbox/sop1.txt"
+
+Interpret the SOP strictly according to the authoring instructions and the schema required by the interpretation request.
+
+Write the completed result to exactly:
+
+"SOP/compiled/onetrust_get_code/interpretation_result.json"
+
+Rules:
+
+- Do not execute the website.
+- Do not launch a browser.
+- Do not modify "sop1.txt".
+- Do not modify production Python code.
+- Preserve the request ID, SOP ID, source hash and other request-linked fields exactly.
+- Use only actions and fields allowed by the required schema.
+- Model dependencies, waiting conditions and branches explicitly.
+- Treat authentication as "MANUAL_AUTH".
+- Give the authentication step a verifiable post-authentication condition based on the website page or URL reached after login.
+- Do not include usernames, passwords, OTPs, cookies, access tokens or other secrets.
+- Ensure every referenced step ID and branch destination exists.
+- Ensure every reachable path has a valid terminal outcome.
+- Create only the required "interpretation_result.json" file, then summarize what you created.2. Confirm Copilot created the result
+
+After Copilot finishes, run:
+
+ls -l SOP/compiled/onetrust_get_code/
+
+Expected:
+
+interpretation_request.json
+interpretation_result.json
+
+You can also confirm the result is valid JSON:
+
+.venv/bin/python -m json.tool \
+  SOP/compiled/onetrust_get_code/interpretation_result.json \
+  > /dev/null
+
+Expected: no output and a new terminal prompt. A traceback means the JSON syntax is invalid.
+
+3. Validate the interpretation
+
+Run:
+
+.venv/bin/python -m sop_automation sop validate-result \
+  --result "SOP/compiled/onetrust_get_code/interpretation_result.json"
+
+Expected:
+
+PASS
+
+or an equivalent validation-success message.
+
+If it reports validation errors, do not compile. Give the exact errors back to Copilot and ask it to edit only:
+
+SOP/compiled/onetrust_get_code/interpretation_result.json
+
+4. Compile only after validation passes
+
+.venv/bin/python -m sop_automation sop compile \
+  --result "SOP/compiled/onetrust_get_code/interpretation_result.json"
+
+Expected: the compiled SOP, readable Markdown and manifest are generated without a traceback.
+
+Then check:
+
+find SOP/compiled/onetrust_get_code SOP/generated SOP/manifests \
+  -maxdepth 2 -type f | sort
+
+Complete the Copilot creation and validation first; do not start the runtime browser yet.
