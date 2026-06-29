@@ -1,0 +1,97 @@
+You have set up the terminals correctly:
+
+Terminal 1: runtime host is running. Leave it untouched.
+
+Terminal 2: use this for validation, submission, status, and continue commands.
+
+The earlier terminal was used to create and inspect the TaskIntent.
+
+
+The submission failed because the TaskIntent contains the wrong matching fields:
+
+"requested_goal": "Use SOP onetrust_get_code.",
+"preferred_sop_id": null
+
+But the compiled SOP expects:
+
+"requested_goal": "retrieve_data_domain_script",
+"preferred_sop_id": "onetrust_get_code"
+
+1. Fix the TaskIntent file
+
+In Terminal 2, run:
+
+INTENT_FILE="$(ls -t SOP/generated/*_task_intent.json | head -n 1)"
+echo "$INTENT_FILE"
+
+Open that file in VS Code:
+
+open -a "Visual Studio Code" "$INTENT_FILE"
+
+Change only these two fields:
+
+"requested_goal": "retrieve_data_domain_script",
+"preferred_sop_id": "onetrust_get_code",
+
+Keep this input unchanged, provided abc.com really exists in OneTrust:
+
+"inputs": {
+  "target_website_url": "abc.com"
+}
+
+Save the file with Command + S.
+
+2. Validate the corrected intent
+
+In Terminal 2:
+
+.venv/bin/python -m sop_automation task validate-intent \
+  --intent-file "$INTENT_FILE"
+
+Expected:
+
+Intent validation: PASS
+
+3. Submit again
+
+.venv/bin/python -m sop_automation task submit \
+  --intent-file "$INTENT_FILE"
+
+Expected:
+
+STARTED
+Run ID: <some-run-id>
+
+Terminal 1 should also begin showing runtime activity, and Chromium should open.
+
+4. Save the Run ID
+
+In Terminal 2:
+
+RUN_ID="<paste-the-actual-run-id>"
+
+Then check status:
+
+.venv/bin/python -m sop_automation task status --run-id "$RUN_ID"
+
+Expected initial status:
+
+RUNNING
+
+or:
+
+WAITING_FOR_AUTH
+
+5. When the browser requests login
+
+Complete username, password, and MFA manually. Wait until the OneTrust websites page is fully loaded. Keep the browser open.
+
+Then run in Terminal 2:
+
+.venv/bin/python -m sop_automation task continue --run-id "$RUN_ID"
+
+Expected:
+
+AUTH_VERIFIED
+
+The previous error was only a TaskIntent goal-matching error. The runtime host and compiled SOP are not failing.
