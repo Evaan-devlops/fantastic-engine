@@ -1,0 +1,50 @@
+The SOP is compiled and registered correctly:
+
+SOP ID: onetrust_get_code
+
+Goal: retrieve_data_domain_script
+
+
+Now create the request for one real run.
+
+1. Create first_task.txt
+
+Replace the URL below with a website that already exists in OneTrust:
+
+cat > first_task.txt <<'EOF'
+Use SOP onetrust_get_code.
+
+Goal:
+retrieve_data_domain_script
+
+Inputs:
+target_website_url=https://REPLACE-WITH-EXISTING-WEBSITE.com
+
+Constraints:
+- The website already exists in OneTrust.
+- Do not use the add_website branch.
+- Authentication and MFA will be completed manually in the browser.
+- Do not store passwords, OTPs, cookies, tokens, or credentials.
+- Stop safely if the website is not found.
+EOF
+
+Check the file:
+
+cat first_task.txt
+
+Make sure you replaced the sample URL.
+
+2. Prepare the TaskIntent request
+
+.venv/bin/python -m sop_automation task prepare-intent --request-file first_task.txt
+
+Expected output:
+
+A task_intent_request.json path
+
+The exact path where Copilot must create the TaskIntent result
+
+No traceback
+
+
+Do not start the runtime yet. Run prepare-intent and share the output showing the generated paths.
