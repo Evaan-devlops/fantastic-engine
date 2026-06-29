@@ -101,6 +101,7 @@ All `ActionType` values are supported except iframe interaction and complex dyna
 | HANDLE_POPUP | Dismiss or accept a browser dialog or modal |
 | MANUAL_AUTH | Pause for the user to complete authentication |
 | BRANCH | Branch based on a runtime condition |
+| AUTH_BRANCH | Classify the current generic authentication state |
 | END_SUCCESS | Mark the run as successfully completed |
 | END_FAILURE | Mark the run as failed with a reason |
 | DEFERRED | Placeholder for a capability not yet implemented |
@@ -111,7 +112,10 @@ Authentication is always manual in Phase 0–3. When a `MANUAL_AUTH` step is rea
 1. The runtime pauses the run and sets `status = WAITING_FOR_AUTH`
 2. The user completes authentication in the open browser window
 3. The user invokes `task resume <run_id>` to continue
-4. The runtime verifies the authenticated state before proceeding
+4. The runtime verifies the declared postcondition before proceeding
+
+Authentication-state branching uses `AUTH_BRANCH`. Normal `BRANCH` remains for
+business conditions and does not infer authentication state.
 
 No credentials are stored by the runtime. The runtime never reads or writes passwords.
 

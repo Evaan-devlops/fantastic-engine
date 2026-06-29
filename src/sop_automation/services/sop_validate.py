@@ -32,6 +32,10 @@ _CRED_ASSIGNMENT_RE = re.compile(
 )
 _PLACEHOLDER_RE = re.compile(r'\{\{input\.(\w+)\}\}')
 _BLOCKING_KEYWORDS = re.compile(r'\b(blocking|must)\b', re.IGNORECASE)
+_SUBMISSION_CLICK_RE = re.compile(
+    r"\b(next|submit|sign\s*in|login|log\s*in|continue|save|send|confirm)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass
@@ -175,6 +179,22 @@ class SopValidateService:
                         location=step_loc,
                     ))
 
+                # R08b ACTION_POSTCONDITION_REQUIRED
+                if (
+                    step.action == ActionType.CLICK
+                    and _SUBMISSION_CLICK_RE.search(step.element_name)
+                    and step.postcondition is None
+                ):
+                    issues.append(ValidationIssue(
+                        severity=ERROR,
+                        rule_id="ACTION_POSTCONDITION_REQUIRED",
+                        message=(
+                            "Submission/navigation CLICK steps must declare "
+                            "an explicit postcondition; wait_condition is pre-action only"
+                        ),
+                        location=step_loc,
+                    ))
+
                 # R09 VALID_PLACEHOLDERS
                 for field_text in [step.value or ""]:
                     for ph_name in _PLACEHOLDER_RE.findall(field_text):
@@ -225,24 +245,24 @@ class SopValidateService:
                     "ELEMENT_TEXT_CONTAINS", "ELEMENT_TEXT_EQUALS",
                 })
                 if step.action == ActionType.MANUAL_AUTH:
-                    if step.wait_condition is None:
+                    if step.postcondition is None:
                         issues.append(ValidationIssue(
                             severity=ERROR,
                             rule_id="MANUAL_AUTH_POSTCONDITION_REQUIRED",
                             message=(
-                                "MANUAL_AUTH step must have a wait_condition. "
+                                "MANUAL_AUTH step must have a postcondition. "
                                 "Allowed types: URL_CONTAINS, URL_EQUALS, ELEMENT_VISIBLE, "
                                 "ELEMENT_TEXT_CONTAINS, ELEMENT_TEXT_EQUALS"
                             ),
                             location=step_loc,
                         ))
-                    elif step.wait_condition.type.value not in _ALLOWED_AUTH_WAIT_TYPES:
+                    elif step.postcondition.type.value not in _ALLOWED_AUTH_WAIT_TYPES:
                         issues.append(ValidationIssue(
                             severity=ERROR,
                             rule_id="MANUAL_AUTH_POSTCONDITION_REQUIRED",
                             message=(
-                                f"MANUAL_AUTH wait_condition type "
-                                f"{step.wait_condition.type.value!r} is not allowed. "
+                                f"MANUAL_AUTH postcondition type "
+                                f"{step.postcondition.type.value!r} is not allowed. "
                                 f"Use: {', '.join(sorted(_ALLOWED_AUTH_WAIT_TYPES))}"
                             ),
                             location=step_loc,
@@ -330,13 +350,13 @@ class SopValidateService:
         for goal in result.goals:
             has_safe_terminal = False
             for cap_id in goal.capability_ids:
-                cap = cap_map.get(cap_id)
-                if cap is None:
+                goal_cap = cap_map.get(cap_id)
+                if goal_cap is None:
                     continue
-                if cap.is_deferred:
+                if goal_cap.is_deferred:
                     has_safe_terminal = True
                     break
-                for step in cap.steps:
+                for step in goal_cap.steps:
                     if any(o.is_terminal for o in step.expected_outcomes):
                         has_safe_terminal = True
                         break
@@ -439,6 +459,73 @@ class SopValidateService:
                                 message=f"Non-terminal outcome {outcome.outcome_id!r} in BRANCH step {step.step_id!r} has no next_capability_id",
                                 location=f"capability.{cap.capability_id}.step.{step.step_id}",
                             ))
+
+        # AUTH_BRANCH_CONTRACT — AUTH_BRANCH requires outcomes and safe error/unknown handling
+        _AUTH_BRANCH_SUPPORTED = frozenset({
+            "USERNAME_PASSWORD", "PASSWORD_ONLY", "SSO_REDIRECT",
+            "MANUAL_AUTH_REQUIRED", "ALREADY_AUTHENTICATED",
+            "AUTHENTICATION_ERROR", "UNKNOWN_PAGE",
+        })
+        for cap in result.capabilities:
+            for step in cap.steps:
+                if step.action != ActionType.AUTH_BRANCH:
+                    continue
+                step_loc = f"capability.{cap.capability_id}.step.{step.step_id}"
+                if not step.expected_outcomes:
+                    issues.append(ValidationIssue(
+                        severity=ERROR,
+                        rule_id="AUTH_BRANCH_REQUIRES_OUTCOMES",
+                        message="AUTH_BRANCH step must declare at least one outcome",
+                        location=step_loc,
+                    ))
+                    continue
+                has_default = any(getattr(o, "is_default", False) for o in step.expected_outcomes)
+                handled_values: set[str] = set()
+                for outcome in step.expected_outcomes:
+                    if outcome.condition is not None:
+                        val = str(outcome.condition.expected_value or "")
+                        handled_values.add(val)
+                        if val not in _AUTH_BRANCH_SUPPORTED and val:
+                            issues.append(ValidationIssue(
+                                severity=WARNING,
+                                rule_id="AUTH_BRANCH_UNKNOWN_VALUE",
+                                message=(
+                                    f"AUTH_BRANCH outcome {outcome.outcome_id!r} expects "
+                                    f"unsupported value {val!r}"
+                                ),
+                                location=step_loc,
+                            ))
+                        if val == "AUTHENTICATION_ERROR" and getattr(outcome, "is_success", False):
+                            issues.append(ValidationIssue(
+                                severity=ERROR,
+                                rule_id="AUTH_BRANCH_ERROR_MUST_FAIL",
+                                message=(
+                                    "AUTH_BRANCH AUTHENTICATION_ERROR outcome must not be "
+                                    "is_success=True"
+                                ),
+                                location=step_loc,
+                            ))
+                if not has_default:
+                    if "AUTHENTICATION_ERROR" not in handled_values:
+                        issues.append(ValidationIssue(
+                            severity=ERROR,
+                            rule_id="AUTH_BRANCH_REQUIRES_ERROR_HANDLING",
+                            message=(
+                                "AUTH_BRANCH must handle AUTHENTICATION_ERROR or declare a "
+                                "safe default outcome"
+                            ),
+                            location=step_loc,
+                        ))
+                    if "UNKNOWN_PAGE" not in handled_values:
+                        issues.append(ValidationIssue(
+                            severity=ERROR,
+                            rule_id="AUTH_BRANCH_REQUIRES_UNKNOWN_PAGE_HANDLING",
+                            message=(
+                                "AUTH_BRANCH must handle UNKNOWN_PAGE or declare a "
+                                "safe default outcome"
+                            ),
+                            location=step_loc,
+                        ))
 
         # GOAL_REACHABILITY — every non-deferred capability in goal.capability_ids reachable from entry
         for goal in result.goals:

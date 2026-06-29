@@ -17,12 +17,11 @@ from sop_automation.models.sop import (
     StepProposal,
     OutcomeProposal,
     InputDefinition,
-    OutputDefinition,
     SourceReference,
-    InferenceSource,
+    WaitConditionSpec,
+    WaitConditionType,
 )
 from sop_automation.models.common import SourceFormat, ActionType, ElementType
-from sop_automation.models.validation import ValidationSeverity
 from sop_automation.services.sop_validate import SopValidateService
 from sop_automation.storage.json_store import write_json_atomic, new_id, utc_now
 
@@ -330,6 +329,10 @@ class TestManualAuth:
             element_name="auth_page",
             element_type=ElementType.PAGE,
             value="Enter password: mysecret123",
+            postcondition=WaitConditionSpec(
+                type=WaitConditionType.URL_CONTAINS,
+                expected_value="/dashboard",
+            ),
             expected_outcomes=[
                 OutcomeProposal(
                     outcome_id="auth_done", description="Authenticated",
@@ -362,6 +365,10 @@ class TestManualAuth:
             element_name="auth_page",
             element_type=ElementType.PAGE,
             value="Please complete MFA in browser",
+            postcondition=WaitConditionSpec(
+                type=WaitConditionType.URL_CONTAINS,
+                expected_value="/dashboard",
+            ),
             expected_outcomes=[
                 OutcomeProposal(
                     outcome_id="auth_done", description="Authenticated",
@@ -384,6 +391,67 @@ class TestManualAuth:
         report = SopValidateService().validate(result_path, tmp_path).report
         cred_errors = [i for i in report.issues if i.rule_id == "MANUAL_AUTH_NO_CREDS"]
         assert cred_errors == []
+
+    def test_manual_auth_requires_explicit_postcondition(self, tmp_path: Path) -> None:
+        base = make_valid_result()
+        auth_step = StepProposal(
+            step_id="step_001",
+            sequence=1,
+            action=ActionType.MANUAL_AUTH,
+            element_name="auth_page",
+            element_type=ElementType.PAGE,
+            value="Please complete MFA in browser",
+            expected_outcomes=[
+                OutcomeProposal(
+                    outcome_id="auth_done", description="Authenticated",
+                    is_terminal=True, is_success=True,
+                )
+            ],
+        )
+        ok_cap = CapabilityProposal(
+            capability_id="login_cap",
+            name="Login",
+            application_id="crm_app",
+            description="Logs in with MFA prompt.",
+            steps=[auth_step],
+        )
+        result = base.model_copy(
+            update={"capabilities": [ok_cap, base.capabilities[1]]}
+        )
+        result_path = _write_pair(tmp_path, result, make_valid_request())
+
+        report = SopValidateService().validate(result_path, tmp_path).report
+
+        assert any(i.rule_id == "MANUAL_AUTH_POSTCONDITION_REQUIRED" for i in report.issues)
+
+    def test_submission_click_requires_explicit_postcondition(self, tmp_path: Path) -> None:
+        base = make_valid_result()
+        click_step = StepProposal(
+            step_id="step_001",
+            sequence=1,
+            action=ActionType.CLICK,
+            element_name="Next",
+            element_type=ElementType.BUTTON,
+            expected_outcomes=[
+                OutcomeProposal(
+                    outcome_id="clicked", description="Clicked",
+                    is_terminal=True, is_success=True,
+                )
+            ],
+        )
+        cap = CapabilityProposal(
+            capability_id="login_cap",
+            name="Login",
+            application_id="crm_app",
+            description="Clicks Next.",
+            steps=[click_step],
+        )
+        result = base.model_copy(update={"capabilities": [cap, base.capabilities[1]]})
+        result_path = _write_pair(tmp_path, result, make_valid_request())
+
+        report = SopValidateService().validate(result_path, tmp_path).report
+
+        assert any(i.rule_id == "ACTION_POSTCONDITION_REQUIRED" for i in report.issues)
 
 
 class TestPlaceholderValidation:
@@ -581,6 +649,10 @@ def _make_valid_result_with_manual_auth(
         element_name="auth_page",
         element_type=ElementType.PAGE,
         value=step_value,
+        postcondition=WaitConditionSpec(
+            type=WaitConditionType.URL_CONTAINS,
+            expected_value="/dashboard",
+        ),
         expected_outcomes=[
             OutcomeProposal(
                 outcome_id="auth_done",
@@ -709,3 +781,149 @@ class TestNewValidationRules:
         report = SopValidateService().validate(result_path, tmp_path).report
         rule_ids = [i.rule_id for i in report.issues]
         assert "CAPABILITY_APPLICATION_EXISTS" in rule_ids
+
+
+class TestAuthBranchValidation:
+    """Stage 3 gate — AUTH_BRANCH contract validation."""
+
+    def _auth_branch_cap(
+        self,
+        outcomes: list[OutcomeProposal],
+    ) -> CapabilityProposal:
+        return CapabilityProposal(
+            capability_id="login_cap",
+            name="Login",
+            application_id="crm_app",
+            description="Auth.",
+            steps=[
+                StepProposal(
+                    step_id="step_001",
+                    sequence=1,
+                    action=ActionType.AUTH_BRANCH,
+                    element_name="IDP page",
+                    element_type=ElementType.PAGE,
+                    expected_outcomes=outcomes,
+                )
+            ],
+        )
+
+    def test_auth_branch_without_outcomes_fails_validation(self, tmp_path: Path) -> None:
+        base = make_valid_result()
+        cap = self._auth_branch_cap(outcomes=[])
+        result = base.model_copy(update={"capabilities": [cap, base.capabilities[1]]})
+        result_path = _write_pair(tmp_path, result, make_valid_request())
+
+        report = SopValidateService().validate(result_path, tmp_path).report
+
+        rule_ids = [i.rule_id for i in report.issues]
+        assert "AUTH_BRANCH_REQUIRES_OUTCOMES" in rule_ids
+
+    def test_auth_branch_missing_authentication_error_handling_fails(self, tmp_path: Path) -> None:
+        base = make_valid_result()
+        from sop_automation.models.sop import ConditionSpec, ConditionOperator
+        cap = self._auth_branch_cap(outcomes=[
+            OutcomeProposal(
+                outcome_id="up",
+                description="Username+Password",
+                is_terminal=True,
+                is_success=True,
+                condition=ConditionSpec(
+                    source_key="steps.step_001.value",
+                    operator=ConditionOperator.EQUALS,
+                    expected_value="USERNAME_PASSWORD",
+                ),
+            ),
+            OutcomeProposal(
+                outcome_id="unknown",
+                description="Unknown page",
+                is_terminal=True,
+                is_success=False,
+                condition=ConditionSpec(
+                    source_key="steps.step_001.value",
+                    operator=ConditionOperator.EQUALS,
+                    expected_value="UNKNOWN_PAGE",
+                ),
+            ),
+            # AUTHENTICATION_ERROR NOT handled
+        ])
+        result = base.model_copy(update={"capabilities": [cap, base.capabilities[1]]})
+        result_path = _write_pair(tmp_path, result, make_valid_request())
+
+        report = SopValidateService().validate(result_path, tmp_path).report
+
+        rule_ids = [i.rule_id for i in report.issues]
+        assert "AUTH_BRANCH_REQUIRES_ERROR_HANDLING" in rule_ids
+
+    def test_auth_branch_with_safe_default_passes(self, tmp_path: Path) -> None:
+        base = make_valid_result()
+        from sop_automation.models.sop import ConditionSpec, ConditionOperator
+        cap = self._auth_branch_cap(outcomes=[
+            OutcomeProposal(
+                outcome_id="up",
+                description="Username+Password",
+                is_terminal=True,
+                is_success=True,
+                condition=ConditionSpec(
+                    source_key="steps.step_001.value",
+                    operator=ConditionOperator.EQUALS,
+                    expected_value="USERNAME_PASSWORD",
+                ),
+            ),
+            OutcomeProposal(
+                outcome_id="fallback",
+                description="Safe failure fallback",
+                is_terminal=True,
+                is_success=False,
+                is_default=True,
+            ),
+        ])
+        result = base.model_copy(update={"capabilities": [cap, base.capabilities[1]]})
+        result_path = _write_pair(tmp_path, result, make_valid_request())
+
+        report = SopValidateService().validate(result_path, tmp_path).report
+
+        rule_ids = [i.rule_id for i in report.issues]
+        assert "AUTH_BRANCH_REQUIRES_ERROR_HANDLING" not in rule_ids
+        assert "AUTH_BRANCH_REQUIRES_UNKNOWN_PAGE_HANDLING" not in rule_ids
+
+    def test_auth_branch_authentication_error_as_success_fails_validation(self, tmp_path: Path) -> None:
+        base = make_valid_result()
+        from sop_automation.models.sop import ConditionSpec, ConditionOperator
+        cap = self._auth_branch_cap(outcomes=[
+            OutcomeProposal(
+                outcome_id="auth_error_wrong",
+                description="Auth error misclassified as success",
+                is_terminal=True,
+                is_success=True,   # WRONG: should be False
+                condition=ConditionSpec(
+                    source_key="steps.step_001.value",
+                    operator=ConditionOperator.EQUALS,
+                    expected_value="AUTHENTICATION_ERROR",
+                ),
+            ),
+            OutcomeProposal(
+                outcome_id="unknown",
+                description="Safe fallback",
+                is_terminal=True,
+                is_success=False,
+                is_default=True,
+            ),
+        ])
+        result = base.model_copy(update={"capabilities": [cap, base.capabilities[1]]})
+        result_path = _write_pair(tmp_path, result, make_valid_request())
+
+        report = SopValidateService().validate(result_path, tmp_path).report
+
+        rule_ids = [i.rule_id for i in report.issues]
+        assert "AUTH_BRANCH_ERROR_MUST_FAIL" in rule_ids
+
+    def test_ordinary_branch_is_not_affected_by_auth_branch_rules(self, tmp_path: Path) -> None:
+        base = make_valid_result()
+        # Ordinary BRANCH with no special error outcomes — should pass
+        result_path = _write_pair(tmp_path, base, make_valid_request())
+
+        report = SopValidateService().validate(result_path, tmp_path).report
+
+        rule_ids = [i.rule_id for i in report.issues]
+        assert "AUTH_BRANCH_REQUIRES_OUTCOMES" not in rule_ids
+        assert "AUTH_BRANCH_REQUIRES_ERROR_HANDLING" not in rule_ids

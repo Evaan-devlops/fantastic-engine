@@ -7,6 +7,7 @@ import time
 from typing import TYPE_CHECKING
 
 from sop_automation.models.common import ElementType
+from sop_automation.runtime.diagnostics import CandidateAttempt
 
 if TYPE_CHECKING:
     from playwright.async_api import Locator, Page
@@ -24,10 +25,17 @@ _ELEMENT_TYPE_TO_ROLE = {
 class LocatorError(Exception):
     """Raised when no locator strategy succeeds."""
 
-    def __init__(self, element_name: str, tried: list[str], candidates: list[str]) -> None:
+    def __init__(
+        self,
+        element_name: str,
+        tried: list[str],
+        candidates: list[str],
+        attempts: list[CandidateAttempt] | None = None,
+    ) -> None:
         self.element_name = element_name
         self.tried = tried
         self.candidates = candidates
+        self.attempts: list[CandidateAttempt] = attempts or []
         super().__init__(
             f"Could not locate element {element_name!r}. "
             f"Tried: {tried}. "
@@ -118,7 +126,34 @@ class LocatorService:
 
             await asyncio.sleep(self._poll_seconds)
 
-        raise LocatorError(element_name, tried, last_candidates)
+        attempts = await self._collect_attempts(page, element_name, element_type)
+        raise LocatorError(element_name, tried, last_candidates, attempts)
+
+    def build_locator(
+        self,
+        page: "Page",
+        element_name: str,
+        element_type: ElementType,
+    ) -> "Locator":
+        return self.candidate_locators(page, element_name, element_type)[0][1]
+
+    def candidate_locators(
+        self,
+        page: "Page",
+        element_name: str,
+        element_type: ElementType,
+    ) -> list[tuple[str, "Locator"]]:
+        lookup_name = normalize_element_name(element_name, element_type)
+        accessible_name: str | re.Pattern[str] = (
+            re.compile(f"^{re.escape(lookup_name)}$", re.IGNORECASE)
+            if element_type == ElementType.TEXTBOX
+            else element_name
+        )
+        placeholder_contains_name = _contains_words_pattern(lookup_name)
+        return self._locators(
+            page, element_name, element_type, lookup_name, accessible_name,
+            placeholder_contains_name,
+        )
 
     def _strategy_names(
         self,
@@ -203,6 +238,70 @@ class LocatorService:
 
         candidates = await self._visible_candidates(page)
         raise LocatorAmbiguityError(element_name, strategy, len(visible_indexes), candidates)
+
+    async def _collect_attempts(
+        self,
+        page: "Page",
+        element_name: str,
+        element_type: ElementType,
+    ) -> list[CandidateAttempt]:
+        """Probe each locator strategy once (non-waiting) and record the diagnostic state."""
+        attempts: list[CandidateAttempt] = []
+        for strategy, locator in self._locators(
+            page,
+            element_name,
+            element_type,
+            normalize_element_name(element_name, element_type),
+            (
+                re.compile(
+                    f"^{re.escape(normalize_element_name(element_name, element_type))}$",
+                    re.IGNORECASE,
+                )
+                if element_type == ElementType.TEXTBOX
+                else element_name
+            ),
+            _contains_words_pattern(normalize_element_name(element_name, element_type)),
+        ):
+            try:
+                count = await locator.count()
+            except Exception:
+                attempts.append(CandidateAttempt(strategy=strategy, match_count=0, rejection_reason="PROBE_ERROR"))
+                continue
+
+            if count == 0:
+                attempts.append(CandidateAttempt(strategy=strategy, match_count=0, rejection_reason="NO_MATCH"))
+                continue
+
+            visible: bool | None = None
+            enabled: bool | None = None
+            editable: bool | None = None
+            rejection: str | None = None
+            try:
+                candidate = locator.nth(0)
+                visible = await candidate.is_visible()
+                if visible:
+                    try:
+                        enabled = await candidate.is_enabled()
+                    except Exception:
+                        pass
+                    try:
+                        editable = await candidate.is_editable()
+                    except Exception:
+                        pass
+                else:
+                    rejection = "NOT_VISIBLE"
+            except Exception:
+                rejection = "PROBE_ERROR"
+
+            attempts.append(CandidateAttempt(
+                strategy=strategy,
+                match_count=count,
+                visible=visible,
+                enabled=enabled,
+                editable=editable,
+                rejection_reason=rejection,
+            ))
+        return attempts
 
     async def _visible_candidates(self, page: "Page") -> list[str]:
         try:

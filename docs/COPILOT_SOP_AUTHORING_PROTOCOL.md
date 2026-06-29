@@ -60,6 +60,9 @@ The result must conform exactly to the `InterpretationResult` JSON schema. Unkno
 - All IDs (`result_id`, `capability_id`, `step_id`, `goal_id`, etc.) must be unique within the document.
 - Use `{{input.name}}` format exactly for input placeholders.
 - `MANUAL_AUTH` steps must not contain passwords, OTPs, tokens, cookies, MFA codes, or secrets.
+- `wait_condition` is pre-action readiness only; `postcondition` proves action completion.
+- Submission/navigation `CLICK` steps and `MANUAL_AUTH` steps require an explicit `postcondition`.
+- Use `AUTH_BRANCH` for generic authentication-state classification; keep `BRANCH` for business branching.
 - Deferred capabilities: set `is_deferred: true` and leave `steps: []`.
 - Confidence values: floats in range `0.0–1.0`.
 - `evidence_lines`: 1-based line numbers from the source.
@@ -73,7 +76,7 @@ The result must conform exactly to the `InterpretationResult` JSON schema. Unkno
 sop sop validate-result --result <path-to-interpretation_result.json>
 ```
 
-**What it does:** Runs 18 validation rules:
+**What it does:** Runs validation rules including:
 1. `SCHEMA_VERSION` — must be `"1.0"`
 2. `UNIQUE_CAPABILITY_IDS` — no duplicate capability IDs
 3. `UNIQUE_STEP_IDS` — globally unique step IDs
@@ -90,6 +93,10 @@ sop sop validate-result --result <path-to-interpretation_result.json>
 14. `DEFERRED_NON_EXECUTABLE` — warning if deferred cap has steps
 15. `GOAL_SAFE_TERMINAL` — each goal must have a terminal path
 16. `SOURCE_HASH_PRESERVED` — sha256 must match the request
+
+Additional Milestone 1 runtime-contract validation includes
+`MANUAL_AUTH_POSTCONDITION_REQUIRED` for manual authentication completion and
+`ACTION_POSTCONDITION_REQUIRED` for submission/navigation clicks.
 
 **Output:** `PASS` or `FAIL` with all issues listed. Writes `validation_report.json`.
 

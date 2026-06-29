@@ -133,6 +133,7 @@ class StepProposal(FrozenModel):
     element_type: ElementType
     value: str | None = None
     wait_condition: WaitConditionSpec | None = None
+    postcondition: WaitConditionSpec | None = None
     wait_condition_notes: str | None = None
     expected_outcomes: list[OutcomeProposal] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)
@@ -262,6 +263,7 @@ class SopStep(FrozenModel):
     capability_id: str
     value: str | None = None
     wait_condition: WaitConditionSpec | None = None
+    postcondition: WaitConditionSpec | None = None
     wait_condition_notes: str | None = None
     expected_outcomes: list[OutcomeRule] = Field(default_factory=list)
     dependencies: list[str] = Field(default_factory=list)

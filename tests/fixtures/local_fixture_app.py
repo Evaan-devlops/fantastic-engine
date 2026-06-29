@@ -123,6 +123,168 @@ _EMAIL_LOGIN_AMBIGUOUS_HTML = """\
   </body>
 </html>"""
 
+_AUTH_LOGIN_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <form id="email-form">
+      <label for="email">Email address</label>
+      <input id="email" type="email" placeholder="Enter your email address">
+      <button id="next" type="submit" disabled>Next</button>
+    </form>
+    <script>
+      const email = document.getElementById("email");
+      const next = document.getElementById("next");
+      const update = () => { next.disabled = !email.value.includes("@"); };
+      email.addEventListener("input", update);
+      email.addEventListener("blur", update);
+      document.getElementById("email-form").addEventListener("submit", event => {
+        event.preventDefault();
+        setTimeout(() => {
+          window.history.pushState({}, "", "/auth/password");
+          document.body.innerHTML = `
+            <form id="password-form">
+              <label for="password">Password</label>
+              <input id="password" type="password" placeholder="Password">
+              <button type="submit">Sign in</button>
+            </form>
+          `;
+          document.getElementById("password-form").addEventListener("submit", passwordEvent => {
+            passwordEvent.preventDefault();
+            window.history.pushState({}, "", "/auth/manual");
+            document.body.innerHTML = "<p>Complete authentication</p><button>Continue</button>";
+          });
+        }, 300);
+      });
+    </script>
+  </body>
+</html>"""
+
+_AUTH_LOGIN_DELAYED_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <form id="email-form">
+      <label for="email">Email address</label>
+      <input id="email" type="email" placeholder="Enter your email address">
+      <button id="next" type="submit" disabled>Next</button>
+    </form>
+    <script>
+      const email = document.getElementById("email");
+      const next = document.getElementById("next");
+      const update = () => { next.disabled = !email.value.includes("@"); };
+      email.addEventListener("input", update);
+      email.addEventListener("blur", update);
+      document.getElementById("email-form").addEventListener("submit", event => {
+        event.preventDefault();
+        setTimeout(() => {
+          window.history.pushState({}, "", "/auth/password-delayed");
+          document.body.innerHTML = `
+            <form id="password-form">
+              <label for="password">Password</label>
+              <input id="password" type="password" placeholder="Password">
+              <button type="submit">Sign in</button>
+            </form>
+          `;
+        }, 900);
+      });
+    </script>
+  </body>
+</html>"""
+
+_AUTH_USERNAME_PASSWORD_HTML = """\
+<!doctype html>
+<html><body>
+  <label for="username">Username</label>
+  <input id="username" type="text">
+  <label for="password">Password</label>
+  <input id="password" type="password">
+</body></html>"""
+
+_AUTH_PASSWORD_ONLY_HTML = """\
+<!doctype html>
+<html><body>
+  <label for="password">Password</label>
+  <input id="password" type="password">
+</body></html>"""
+
+_AUTH_SSO_HTML = """\
+<!doctype html>
+<html><body><p>Redirecting to identity provider</p></body></html>"""
+
+_AUTH_MANUAL_HTML = """\
+<!doctype html>
+<html><body><p>Complete authentication</p><button>Continue</button></body></html>"""
+
+_AUTH_DASHBOARD_HTML = """\
+<!doctype html>
+<html><body><h1>Dashboard</h1><button>Log out</button></body></html>"""
+
+_AUTH_ERROR_HTML = """\
+<!doctype html>
+<html><body><p>Authentication failed</p></body></html>"""
+
+_AUTH_SIGN_IN_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <form id="signin-form">
+      <label for="password">Password</label>
+      <input id="password" type="password" placeholder="Password">
+      <button type="submit">Sign in</button>
+    </form>
+    <script>
+      document.getElementById("signin-form").addEventListener("submit", ev => {
+        ev.preventDefault();
+        window.history.pushState({}, "", "/auth/manual-waiting");
+        document.body.innerHTML = "<p>Complete authentication</p><button>Continue</button>";
+      });
+    </script>
+  </body>
+</html>"""
+
+_AUTH_MANUAL_WAITING_HTML = """\
+<!doctype html>
+<html><body><p>Complete authentication</p><button>Continue</button></body></html>"""
+
+_AUTH_AUTHENTICATED_HTML = """\
+<!doctype html>
+<html><body><h1>Dashboard</h1><p>You are now signed in.</p><button>Log out</button></body></html>"""
+
+_AUTH_LOGIN_INTERCEPT_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <form id="email-form">
+      <label for="email">Email address</label>
+      <input id="email" type="email" placeholder="Enter your email address">
+      <button id="next" type="submit" disabled>Next</button>
+    </form>
+    <div id="overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.5)"></div>
+    <script>
+      const email = document.getElementById("email");
+      const next = document.getElementById("next");
+      const overlay = document.getElementById("overlay");
+      const update = () => { next.disabled = !email.value.includes("@"); };
+      email.addEventListener("input", update);
+      email.addEventListener("blur", update);
+      let clickCount = 0;
+      next.addEventListener("click", ev => {
+        ev.preventDefault();
+        clickCount++;
+        if (clickCount === 1) {
+          overlay.style.display = "block";
+          setTimeout(() => {
+            overlay.style.display = "none";
+            window.history.pushState({}, "", "/auth/password");
+            document.body.innerHTML = "<form id='password-form'><label for='password'>Password</label><input id='password' type='password'><button type='submit'>Sign in</button></form>";
+          }, 500);
+        }
+      });
+    </script>
+  </body>
+</html>"""
+
 
 class _FixtureHandler(BaseHTTPRequestHandler):
     def log_message(self, *args: object) -> None:
@@ -168,6 +330,30 @@ class _FixtureHandler(BaseHTTPRequestHandler):
             self._send_html(_EMAIL_LOGIN_HIDDEN_DUPLICATE_HTML)
         elif path == "/email-login-ambiguous":
             self._send_html(_EMAIL_LOGIN_AMBIGUOUS_HTML)
+        elif path == "/auth/login":
+            self._send_html(_AUTH_LOGIN_HTML)
+        elif path == "/auth/login-delayed":
+            self._send_html(_AUTH_LOGIN_DELAYED_HTML)
+        elif path == "/auth/username-password":
+            self._send_html(_AUTH_USERNAME_PASSWORD_HTML)
+        elif path == "/auth/password-only":
+            self._send_html(_AUTH_PASSWORD_ONLY_HTML)
+        elif path == "/auth/sso/redirect":
+            self._send_html(_AUTH_SSO_HTML)
+        elif path == "/auth/manual":
+            self._send_html(_AUTH_MANUAL_HTML)
+        elif path == "/auth/dashboard":
+            self._send_html(_AUTH_DASHBOARD_HTML)
+        elif path == "/auth/error":
+            self._send_html(_AUTH_ERROR_HTML)
+        elif path == "/auth/sign-in":
+            self._send_html(_AUTH_SIGN_IN_HTML)
+        elif path == "/auth/manual-waiting":
+            self._send_html(_AUTH_MANUAL_WAITING_HTML)
+        elif path == "/auth/authenticated":
+            self._send_html(_AUTH_AUTHENTICATED_HTML)
+        elif path == "/auth/login-intercept":
+            self._send_html(_AUTH_LOGIN_INTERCEPT_HTML)
         else:
             self._send_text("not found", status=404)
 

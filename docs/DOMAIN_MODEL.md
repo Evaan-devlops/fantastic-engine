@@ -99,7 +99,8 @@ A single executable step within a compiled SOP.
 | element_name | str | Human-readable name of the target element |
 | element_type | ElementType | UI element category |
 | value | str \| None | Value to fill, key to press, option to select, etc. |
-| wait_condition | str \| None | Condition to wait for after action |
+| wait_condition | str \| None | Optional readiness condition checked before the action |
+| postcondition | str \| None | Optional completion condition checked after the action |
 | expected_outcomes | list[OutcomeRule] | Conditional branch outcomes |
 | dependencies | list[str] | Step IDs that must complete first |
 | retry_policy | RetryPolicy | Retry configuration |

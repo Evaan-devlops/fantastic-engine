@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -11,16 +10,32 @@ from typing import TYPE_CHECKING, Any
 from sop_automation.errors import DependencyError
 from sop_automation.models.common import ActionType, RunStatus, StepStatus
 from sop_automation.models.execution import RunState, StepProgress
-from sop_automation.models.task import PlannedCapability, PlannedOutcome, PlannedStep, TaskPlan
+from sop_automation.models.runtime import StepResult
+from sop_automation.models.task import PlannedOutcome, PlannedStep, TaskPlan
 from sop_automation.runtime.action_dispatcher import ActionDispatcher
 from sop_automation.runtime.condition_evaluator import ConditionEvaluator
+from sop_automation.runtime.diagnostics import classify_failure, is_secret_field, redact_mapping, redact_text
+from sop_automation.runtime.postconditions import PostconditionEvaluator
 from sop_automation.runtime.value_resolver import ValueResolver
-from sop_automation.storage.json_store import new_id, utc_now, write_json_atomic
+from sop_automation.storage.json_store import new_id, write_json_atomic
 
 if TYPE_CHECKING:
     from playwright.async_api import Page
 
-_CREDENTIAL_NAMES = {"password", "passwd", "otp", "secret", "token", "credential"}
+_DEFAULT_RETRYABLE_CODES = frozenset({
+    "ELEMENT_DETACHED",
+    "ELEMENT_NOT_VISIBLE",
+    "ELEMENT_NOT_ENABLED",
+    "ELEMENT_NOT_ACTIONABLE",
+    "ACTION_TIMEOUT",
+    "NAVIGATION_TIMEOUT",
+    "POSTCONDITION_NOT_MET",
+})
+
+_NEVER_RETRYABLE_CODES = frozenset({
+    "LOCATOR_AMBIGUOUS",
+    "BROWSER_CLOSED",
+})
 
 _PROGRESS_SYMBOLS = {
     StepStatus.COMPLETED: "v",
@@ -43,8 +58,7 @@ def _utc_now() -> datetime:
 
 
 def _is_credential_step(step: PlannedStep) -> bool:
-    name_lower = step.element_name.lower()
-    return any(cred in name_lower for cred in _CREDENTIAL_NAMES)
+    return is_secret_field(step.element_name)
 
 
 def _topological_sort(steps: list[PlannedStep]) -> list[PlannedStep]:
@@ -105,13 +119,14 @@ class RunManager:
         self.run_dir = run_dir
         self._dispatcher = ActionDispatcher()
         self._evaluator = ConditionEvaluator()
+        self._postconditions = PostconditionEvaluator(self._dispatcher._locator_svc)
         self._resolver = ValueResolver()
         self._state: RunState | None = None
         self._context: dict[str, Any] = {}
         self._auth_event: asyncio.Event = asyncio.Event()
 
     def _emit_event(self, event_type: str, data: dict[str, Any]) -> None:
-        event = {"type": event_type, "ts": _utc_now().isoformat(), **data}
+        event = {"type": event_type, "ts": _utc_now().isoformat(), **redact_mapping(data)}
         events_path = self.run_dir / "events.jsonl"
         with open(events_path, "a", encoding="utf-8") as f:
             f.write(json.dumps(event) + "\n")
@@ -120,7 +135,7 @@ class RunManager:
         if self._state:
             write_json_atomic(
                 self.run_dir / "run_state.json",
-                self._state.model_dump(mode="json"),
+                redact_mapping(self._state.model_dump(mode="json")),
             )
 
     async def start_run(
@@ -133,7 +148,7 @@ class RunManager:
 
         write_json_atomic(
             self.run_dir / "task_plan.json",
-            plan.model_dump(mode="json"),
+            redact_mapping(plan.model_dump(mode="json")),
         )
 
         self._state = RunState(
@@ -265,15 +280,30 @@ class RunManager:
 
     async def _check_auth_condition(self, step: PlannedStep, page: "Page") -> bool:
         """Evaluate MANUAL_AUTH post-auth condition against the live page. Fails closed."""
-        if step.wait_condition is None:
+        if step.postcondition is None:
             return False  # fail closed — a postcondition is required
-        from sop_automation.runtime.page_preparation import PagePreparationService
-        prep = PagePreparationService()
+        result = await self._postconditions.evaluate(page, step.postcondition)
+        return result.satisfied
+
+    async def _postcondition_satisfied(self, step: PlannedStep, page: "Page") -> tuple[bool, dict[str, Any]]:
+        if step.postcondition is None:
+            return False, {}
+        result = await self._postconditions.probe(page, step.postcondition)
+        return result.satisfied, result.signals
+
+    async def _page_title(self, page: "Page") -> str:
         try:
-            await prep.prepare(page, step.wait_condition)
-            return True
+            return str(await page.title())
         except Exception:
-            return False
+            return ""
+
+    def _safe_postcondition(self, step: PlannedStep) -> dict[str, Any] | None:
+        if step.postcondition is None:
+            return None
+        data = step.postcondition.model_dump(mode="json")
+        if "expected_value" in data and data["expected_value"] is not None:
+            data["expected_value"] = "<redacted>"
+        return data
 
     async def _execute_step(
         self,
@@ -298,6 +328,12 @@ class RunManager:
 
         # --- MANUAL_AUTH: suspend until signal_auth() fires; evaluate page condition each time ---
         if step.action == ActionType.MANUAL_AUTH:
+            if step.wait_condition is not None:
+                from sop_automation.runtime.page_preparation import PagePreparationService
+                try:
+                    await PagePreparationService().prepare(page, step.wait_condition)
+                except Exception:
+                    pass
             prog.status = StepStatus.WAITING
             state.status = RunStatus.WAITING_FOR_AUTH
             state.updated_at = _utc_now()
@@ -403,18 +439,40 @@ class RunManager:
             })
             return None
 
-        # --- Retry loop (max 2 attempts) then clarification ---
-        max_attempts = 2
+        # --- Retry loop then clarification ---
+        max_attempts = max(1, step.retry_policy.max_attempts)
         last_result = None
         for attempt in range(1, max_attempts + 1):
             prog.attempt_count = attempt
             state.updated_at = _utc_now()
             self._save_state()
 
+            if attempt > 1:
+                reconciled, reconciliation_signals = await self._postcondition_satisfied(step, page)
+                if reconciled:
+                    assert step.postcondition is not None
+                    prog.status = StepStatus.COMPLETED
+                    prog.completed_at = _utc_now()
+                    prog.current_url = page.url
+                    state.updated_at = _utc_now()
+                    self._context.setdefault("steps", {})[step.step_id] = {
+                        "success": True,
+                        "current_url": page.url,
+                        "reconciled": True,
+                    }
+                    self._save_state()
+                    self._emit_event("step_reconciled", {
+                        "step_id": step.step_id,
+                        "postcondition": self._safe_postcondition(step),
+                        "observed_signals": reconciliation_signals,
+                    })
+                    return _select_outcome(step, self._context, self._evaluator)
+
             result = await self._dispatcher.execute(
                 page, step, self._context, self.run_dir, resolved_value
             )
             last_result = result
+            prog.current_url = result.current_url
 
             if result.success:
                 prog.status = StepStatus.COMPLETED
@@ -432,6 +490,24 @@ class RunManager:
 
                 outcome = _select_outcome(step, self._context, self._evaluator)
                 if outcome is None and step.outcomes:
+                    if step.action == ActionType.AUTH_BRANCH:
+                        prog.status = StepStatus.FAILED
+                        prog.error_message = "BRANCH_NOT_RECOGNIZED"
+                        prog.error_code = "BRANCH_NOT_RECOGNIZED"
+                        prog.completed_at = _utc_now()
+                        state.status = RunStatus.FAILED
+                        state.updated_at = _utc_now()
+                        self._save_state()
+                        self._emit_event("step_failed", {
+                            "step_id": step.step_id,
+                            "failure_code": "BRANCH_NOT_RECOGNIZED",
+                            "branch_value": result.value,
+                        })
+                        self._emit_event("run_failed", {
+                            "reason": "BRANCH_NOT_RECOGNIZED",
+                            "step_id": step.step_id,
+                        })
+                        return None
                     self._emit_event("step_no_outcome", {"step_id": step.step_id})
                 elif outcome is not None:
                     prog.selected_outcome_id = outcome.outcome_id
@@ -444,7 +520,10 @@ class RunManager:
                 return outcome
 
             if attempt < max_attempts:
-                prog.error_message = result.error_message
+                prog.error_message = redact_text(result.error_message or "")
+                prog.error_code = classify_failure(prog.error_message)
+                if not self._is_retryable_failure(prog.error_code, step):
+                    break
                 state.updated_at = _utc_now()
                 self._save_state()
                 self._emit_event("step_retried", {
@@ -452,11 +531,19 @@ class RunManager:
                     "attempt": attempt,
                     "error": result.error_message,
                 })
-                await asyncio.sleep(1.0)
+                await asyncio.sleep(step.retry_policy.delay_seconds)
 
+        if last_result is None:
+            last_result = StepResult(
+                step_id=step.step_id,
+                success=False,
+                error_message="Unknown failure",
+                current_url=page.url,
+            )
         result = last_result
         prog.status = StepStatus.FAILED
-        prog.error_message = result.error_message if result else "Unknown failure"
+        prog.error_message = redact_text(result.error_message if result else "Unknown failure")
+        prog.error_code = classify_failure(prog.error_message)
         prog.completed_at = _utc_now()
 
         if not _is_credential_step(step):
@@ -473,6 +560,8 @@ class RunManager:
         self._save_state()
         self._emit_event("step_failed", {
             "step_id": step.step_id,
+            "action_type": step.action.value,
+            "failure_code": prog.error_code,
             "error": prog.error_message,
         })
 
@@ -481,13 +570,26 @@ class RunManager:
             "run_id": state.run_id,
             "capability_id": step.capability_id,
             "step_id": step.step_id,
+            "action_type": step.action.value,
+            "failure_code": prog.error_code,
             "error_message": prog.error_message,
             "current_url": prog.current_url or "",
+            "page_title": await self._page_title(page),
             "expected_element": step.element_name,
+            "expected_postcondition": (
+                self._safe_postcondition(step)
+                if step.postcondition is not None else None
+            ),
             "locator_candidates": result.locator_candidates if result else [],
+            "locator_attempts": result.locator_attempts if result else [],
             "screenshot_path": prog.screenshot_paths[0] if prog.screenshot_paths else None,
+            "operator_question": (
+                f"Unable to complete {step.action.value} for {step.element_name!r}. "
+                "Confirm the expected element or page state."
+            ),
             "created_at": _utc_now().isoformat(),
         }
+        clarification_data = redact_mapping(clarification_data)
         clarification_path = self.run_dir / "clarification_request.json"
         write_json_atomic(clarification_path, clarification_data)
 
@@ -500,6 +602,13 @@ class RunManager:
             "step_id": step.step_id,
         })
         return None
+
+    def _is_retryable_failure(self, error_code: str | None, step: PlannedStep) -> bool:
+        if error_code in _NEVER_RETRYABLE_CODES:
+            return False
+        if step.retry_policy.retryable_error_codes:
+            return error_code in step.retry_policy.retryable_error_codes
+        return error_code in _DEFAULT_RETRYABLE_CODES
 
     def signal_auth(self, verified: bool = True) -> None:
         """Wake the MANUAL_AUTH await so run_manager can re-evaluate the page condition."""
