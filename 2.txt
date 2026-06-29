@@ -1,3 +1,44 @@
+You’re right—we were circling. The screenshot proves the file was never actually changed. It still contains:
+
+"requested_goal": "Use SOP onetrust_get_code.",
+"preferred_sop_id": null
+
+Validation passed because it checked the JSON structure, not whether the goal matched a compiled SOP.
+
+Leave Terminal 1 running. In Terminal 2, run these commands exactly.
+
+1. Update the file automatically
+
+INTENT_FILE="$(ls -t SOP/generated/*_task_intent.json | head -n 1)"
+
+.venv/bin/python -c 'import json,sys; from pathlib import Path; p=Path(sys.argv[1]); d=json.loads(p.read_text()); d["requested_goal"]="retrieve_data_domain_script"; d["preferred_sop_id"]="onetrust_get_code"; p.write_text(json.dumps(d, indent=2)+"\n"); print("UPDATED:", p)' "$INTENT_FILE"
+
+2. Prove the values changed
+
+.venv/bin/python -c 'import json,sys; d=json.load(open(sys.argv[1])); print("requested_goal =", d["requested_goal"]); print("preferred_sop_id =", d["preferred_sop_id"]); print("target_website_url =", d["inputs"]["target_website_url"])' "$INTENT_FILE"
+
+You must see:
+
+requested_goal = retrieve_data_domain_script
+preferred_sop_id = onetrust_get_code
+target_website_url = abc.com
+
+3. Submit immediately
+
+.venv/bin/python -m sop_automation task submit --intent-file "$INTENT_FILE"
+
+Expected:
+
+STARTED
+Run ID: ...
+
+Do not reopen or manually edit the JSON before submitting.
+
+This also reveals a real product limitation: task prepare-intent incorrectly converted the first sentence into the goal and left preferred_sop_id empty. After the live POC, that parser should be fixed so users never need this manual correction again.
+
+
+
+
 Correct only this file:
 
 "SOP/compiled/onetrust_get_code/interpretation_result.json"
