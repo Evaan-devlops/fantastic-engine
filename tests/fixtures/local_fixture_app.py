@@ -64,6 +64,65 @@ _MISSING_ELEMENT_HTML = """\
 <p>This page has no buttons or inputs.</p>
 </body></html>"""
 
+_EMAIL_LOGIN_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <label for="email">Email address</label>
+    <input id="email" type="email" placeholder="Enter your email address">
+    <button type="button">Next</button>
+  </body>
+</html>"""
+
+_EMAIL_LOGIN_DELAYED_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <div id="mount"></div>
+    <script>
+      setTimeout(() => {
+        document.getElementById("mount").innerHTML = `
+          <label for="email">Email address</label>
+          <input id="email" type="email" placeholder="Enter your email address">
+          <button type="button">Next</button>
+        `;
+      }, 700);
+    </script>
+  </body>
+</html>"""
+
+_EMAIL_LOGIN_PLACEHOLDER_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <input id="email" type="email" placeholder="Enter your email address">
+    <button type="button">Next</button>
+  </body>
+</html>"""
+
+_EMAIL_LOGIN_HIDDEN_DUPLICATE_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <input aria-label="Email address" type="email" style="display:none">
+    <label for="email">Email address</label>
+    <input id="email" type="email" placeholder="Enter your email address">
+    <button type="button">Next</button>
+  </body>
+</html>"""
+
+_EMAIL_LOGIN_AMBIGUOUS_HTML = """\
+<!doctype html>
+<html>
+  <body>
+    <label for="email1">Email address</label>
+    <input id="email1" type="email" placeholder="Enter your email address">
+    <label for="email2">Email address</label>
+    <input id="email2" type="email" placeholder="Enter your email address">
+    <button type="button">Next</button>
+  </body>
+</html>"""
+
 
 class _FixtureHandler(BaseHTTPRequestHandler):
     def log_message(self, *args: object) -> None:
@@ -99,6 +158,16 @@ class _FixtureHandler(BaseHTTPRequestHandler):
             self._send_text("not found", status=404)
         elif path == "/missing-element":
             self._send_html(_MISSING_ELEMENT_HTML)
+        elif path == "/email-login":
+            self._send_html(_EMAIL_LOGIN_HTML)
+        elif path == "/email-login-delayed":
+            self._send_html(_EMAIL_LOGIN_DELAYED_HTML)
+        elif path == "/email-login-placeholder":
+            self._send_html(_EMAIL_LOGIN_PLACEHOLDER_HTML)
+        elif path == "/email-login-hidden-duplicate":
+            self._send_html(_EMAIL_LOGIN_HIDDEN_DUPLICATE_HTML)
+        elif path == "/email-login-ambiguous":
+            self._send_html(_EMAIL_LOGIN_AMBIGUOUS_HTML)
         else:
             self._send_text("not found", status=404)
 
