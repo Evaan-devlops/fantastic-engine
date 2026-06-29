@@ -1,0 +1,261 @@
+Your sop2.txt is almost ready, but make two corrections before preparing it:
+
+1. Remove usernames, email addresses, passwords and credential instructions from the SOP. Authentication must remain manual.
+
+
+2. Remove every reference to add_website. This version should handle only a website that already exists.
+
+
+
+Replace the content of SOP/inbox/sop2.txt with this clean version:
+
+SOP: Retrieve OneTrust Production Script for an Existing Website
+
+Goal
+
+Retrieve the "data-domain-script" value for an existing OneTrust website.
+
+Goal identifier:
+
+"retrieve_data_domain_script"
+
+Input
+
+"target_website_url={{input.target_website_url}}"
+
+Output
+
+"data_domain_script={{output.data_domain_script}}"
+
+Scope
+
+- The target website already exists in OneTrust.
+- Adding a new website is not supported by this SOP.
+- Username, password, MFA, OTP and other authentication details are entered manually by the user.
+- Credentials must never be stored in the SOP, task files, logs or generated artifacts.
+
+Capability 1: authenticate_onetrust
+
+This is the entry capability.
+
+1. Open:
+   
+   "https://uat-de.onetrust.com/cookies/websites"
+
+2. Wait until the OneTrust login page is fully rendered and the login controls are visible.
+
+3. Click the "Next" button.
+
+4. If a separate authentication page or browser tab opens, pause execution for "MANUAL_AUTH".
+
+5. Ask the user to complete username, password, MFA and any other authentication steps manually in the browser.
+
+6. Do not read, copy, record or store authentication values.
+
+7. After authentication succeeds, return to the OneTrust browser tab when necessary.
+
+8. Resume only when both conditions are true:
+   
+   - The current URL equals:
+     
+     "https://uat-de.onetrust.com/cookies/websites"
+   
+   - The OneTrust Websites page is completely rendered and the Search textbox is visible.
+
+9. If the post-authentication page cannot be verified, stop safely with:
+   
+   "AUTHENTICATION_NOT_VERIFIED"
+
+Capability 2: locate_existing_website
+
+1. Locate the Search textbox on the Websites page.
+
+2. Fill the Search textbox with:
+   
+   "{{input.target_website_url}}"
+
+3. Press Enter to run the search.
+
+4. Wait until the results table is visible and completely rendered.
+
+5. Locate the result row whose Website URL exactly equals:
+   
+   "{{input.target_website_url}}"
+
+6. Do not select a partial or similar URL.
+
+7. If no exact matching row is found, stop safely with:
+   
+   "WEBSITE_NOT_FOUND"
+
+8. Read the Scan status value from the exact matching row.
+
+9. If Scan status is "Pending", wait and check it again.
+
+10. Wait for a maximum of 300 seconds, checking every 5 seconds.
+
+11. Continue only when Scan status exactly equals:
+    
+    "Completed"
+
+12. If the status does not become "Completed" within 300 seconds, stop safely with:
+    
+    "SCAN_NOT_COMPLETED"
+
+13. Click the Website URL link in the exact matching row.
+
+Capability 3: retrieve_production_script
+
+1. Wait until the website-detail page is completely rendered.
+
+2. Locate the More options button represented by the three-dot ellipsis icon.
+
+3. Click the More options button.
+
+4. Wait until the dropdown menu is visible.
+
+5. Select:
+   
+   "Copy production scripts"
+
+6. Wait until the Production scripts modal is visible and completely rendered.
+
+7. Locate the production script containing the "data-domain-script" attribute.
+
+8. Extract only the value of the "data-domain-script" attribute.
+
+9. Store the extracted value as:
+   
+   "{{output.data_domain_script}}"
+
+10. Report the extracted value as the successful task output.
+
+11. Finish with terminal outcome:
+    
+    "COMPLETED"
+
+Safe failure rules
+
+Stop without guessing if:
+
+- authentication cannot be verified;
+- the Search textbox is unavailable;
+- the exact website URL is not found;
+- Scan status does not become "Completed";
+- the website-detail page does not load;
+- the More options menu is unavailable;
+- "Copy production scripts" is unavailable;
+- the Production scripts modal does not appear;
+- the "data-domain-script" attribute cannot be found.Save the file with Command + S. Confirm that the white dot beside the sop2.txt tab disappears.
+
+1. Confirm the saved SOP
+
+cat SOP/inbox/sop2.txt
+
+Expected: the corrected SOP appears, with no username, email, password or add_website instruction.
+
+2. Prepare the new SOP
+
+Use a fresh SOP ID:
+
+.venv/bin/python -m sop_automation sop prepare \
+  --source "SOP/inbox/sop2.txt" \
+  --sop-id onetrust_get_code_v2
+
+Expected output should include:
+
+Preprocessing: SOP/inbox/sop2.txt
+Interpretation request: .../SOP/compiled/onetrust_get_code_v2/interpretation_request.json
+
+3. Ask Copilot to create the interpretation result
+
+Paste this into Copilot Agent mode:
+
+Read completely:
+
+1. "docs/COPILOT_SOP_AUTHORING_PROMPT.md"
+2. "SOP/compiled/onetrust_get_code_v2/interpretation_request.json"
+3. "SOP/inbox/sop2.txt"
+4. The repository models defining "InterpretationResult" and "WaitConditionSpec"
+5. Existing valid interpretation-result test fixtures
+
+Write the completed result to exactly:
+
+"SOP/compiled/onetrust_get_code_v2/interpretation_result.json"
+
+Requirements:
+
+- Do not launch the browser.
+- Do not execute the SOP.
+- Do not modify Python source code, tests, documentation or "sop2.txt".
+- Preserve request ID, SOP ID, source hash and source-reference fields exactly.
+- Create the goal "retrieve_data_domain_script".
+- Set its entry capability to "authenticate_onetrust".
+- Include only these capabilities:
+  - "authenticate_onetrust"
+  - "locate_existing_website"
+  - "retrieve_production_script"
+- Do not create or reference "add_website".
+- Use "{{input.target_website_url}}" as the input.
+- Produce "{{output.data_domain_script}}" as the output.
+- Represent authentication using "MANUAL_AUTH".
+- Give the MANUAL_AUTH step a structured post-authentication wait condition verifying the exact Websites URL and visible Search textbox.
+- Every "wait_condition" must be a valid structured "WaitConditionSpec" object, never a plain string.
+- Do not invent unsupported fields such as "capability_sequence".
+- Give every non-default branch a valid structured condition.
+- Every reachable path must end in a terminal outcome.
+- Do not include usernames, email addresses, passwords, OTPs, tokens, cookies or credentials.
+- Run the repository validation command and correct only "interpretation_result.json" until validation reports PASS.
+- Do not manually change generated compiled artifacts.
+
+At completion, report the exact validation result and confirm that only "interpretation_result.json" was created or changed.4. Validate independently
+
+After Copilot finishes:
+
+.venv/bin/python -m sop_automation sop validate-result \
+  --result "SOP/compiled/onetrust_get_code_v2/interpretation_result.json"
+
+Expected:
+
+Validation: PASS
+
+Do not proceed if you see:
+
+missing entry_capability_id
+
+add_website warning
+
+inferred input warning
+
+plain-string wait_condition
+
+branch destination errors
+
+
+5. Compile the validated SOP
+
+.venv/bin/python -m sop_automation sop compile \
+  --result "SOP/compiled/onetrust_get_code_v2/interpretation_result.json"
+
+Expected artifacts:
+
+SOP/compiled/onetrust_get_code_v2/compiled_sop.json
+SOP/manifests/onetrust_get_code_v2.manifest.json
+SOP/generated/onetrust_get_code_v2.md
+
+6. Confirm the entry capability before any runtime attempt
+
+grep -n '"entry_capability_id"' \
+  SOP/compiled/onetrust_get_code_v2/compiled_sop.json
+
+Expected:
+
+"entry_capability_id": "authenticate_onetrust"
+
+Then confirm registration:
+
+.venv/bin/python -m sop_automation sop list
+
+Expected: onetrust_get_code_v2 appears with the retrieve_data_domain_script goal.
+
+Stop at that point. Do not create the task or start the runtime until these checks pass.
